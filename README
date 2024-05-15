@@ -1,0 +1,7 @@
+# Setup the project
+1. Make sure PostgreSql is running
+2. Build the project ```cargo build```
+3. Make ```.env``` file in root directory, the example value can be seen in ```cd .cargo/config.toml```
+4. Create a database based on DATABASE_URL ```sqlx database create```
+5. Run the migration with ```sqlx migrate run```
+6. run the project with ```cargo run```
