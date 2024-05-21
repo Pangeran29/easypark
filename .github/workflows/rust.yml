@@ -7,7 +7,9 @@ on:
     branches: [ "main" ]
 
 env:
-  CARGO_TERM_COLOR: always
+  CARGO_TERM_COLOR: always  
+  DATABASE_URL: postgresql://easypark_owner:XTVzOpa94InE@ep-damp-meadow-a5a41qis.us-east-2.aws.neon.tech/easypark?sslmode=require
+  RUST_LOG: backend_parking=debug
 
 jobs:
   build:
