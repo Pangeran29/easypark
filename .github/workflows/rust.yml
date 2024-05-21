@@ -18,10 +18,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Instal sqlx
+      run: cargo search cargo-sqlx
     - name: Create DB
-      run: cargo sqlx database create
+      run: sqlx database create
     - name: Migrate Table
-      run: cargo sqlx migrate run
+      run: sqlx migrate run
     - name: Build
       run: cargo build --verbose
     - name: Run tests
