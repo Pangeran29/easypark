@@ -17,6 +17,7 @@ pub enum Error {
     JsonRejection(JsonRejection),
     Sqlx(sqlx::Error),
     Reqwest(reqwest::Error),
+    Io(std::io::Error),
 }
 
 impl IntoResponse for Error {
@@ -29,7 +30,10 @@ impl IntoResponse for Error {
             Error::JsonRejection(rejection) => (rejection.status(), rejection.body_text()),
             Error::Sqlx(err) => {
                 let (status, message) = match err {
-                    sqlx::Error::Database(dbx) => (StatusCode::CONFLICT, dbx.message().to_owned()),
+                    sqlx::Error::Database(dbx) => {
+                        debug!("{:#?}", dbx);
+                        (StatusCode::CONFLICT, dbx.message().to_owned())
+                    }
                     sqlx::Error::RowNotFound => {
                         (StatusCode::CONFLICT, "Data not found".to_string())
                     }
@@ -44,12 +48,16 @@ impl IntoResponse for Error {
                 (status, message)
             }
             Error::Reqwest(err) => {
-                debug!("Fail to send whatsapp: {}", err.to_string());
+                debug!("Fail to send whatsapp: {:#?}", err);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "Fail to send whatsapp".to_owned(),
+                    "Fail to send API Request".to_owned(),
                 )
             }
+            Error::Io(err) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                err.to_string()
+            ),
         };
         (status, AppFailed(message)).into_response()
     }
@@ -70,5 +78,11 @@ impl From<JsonRejection> for Error {
 impl From<reqwest::Error> for Error {
     fn from(error: reqwest::Error) -> Self {
         Self::Reqwest(error)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
     }
 }
