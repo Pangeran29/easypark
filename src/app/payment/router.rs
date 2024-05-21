@@ -10,6 +10,7 @@ use crate::app::parking_history::ParkingHistory;
 use crate::app::parking_history::TicketStatus;
 use crate::app::parking_history::UpdateParkingHistory;
 use crate::app::user::User;
+use crate::extractor::current_user::authenticate_user;
 use crate::{
     error::aggregate::Result,
     extractor::{app_body::Body, app_json::AppSuccess},
