@@ -7,7 +7,6 @@ use crate::error::aggregate::Result;
 
 pub mod router;
 
-
 #[derive(Debug, Serialize)]
 pub struct ParkingLot {
     pub id: Uuid,

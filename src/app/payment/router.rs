@@ -4,15 +4,19 @@ use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
-use tracing::debug;
 use uuid::Uuid;
 
+use crate::app::parking_history::ParkingHistory;
+use crate::app::parking_history::TicketStatus;
+use crate::app::parking_history::UpdateParkingHistory;
 use crate::app::user::User;
 use crate::{
     error::aggregate::Result,
     extractor::{app_body::Body, app_json::AppSuccess},
     middleware::base::print_request_body,
 };
+
+use super::TransactionHistory;
 
 pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
@@ -26,9 +30,7 @@ pub fn build(pool: Pool<Postgres>) -> Router {
 
 #[derive(Debug, Deserialize)]
 struct TransactionPayload {
-    user_phone: String,
-    gross_amount: i32,
-    item_name: String,
+    parking_history_id: Uuid,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,13 +41,13 @@ struct TransactionResponse {
 #[derive(Serialize, Deserialize)]
 struct TransactionDetails {
     order_id: Uuid,
-    gross_amount: i32,
+    gross_amount: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ItemDetail {
-    price: i32,
-    quantity: i32,
+    price: f64,
+    quantity: u32,
     name: String,
 }
 
@@ -94,23 +96,6 @@ struct Action {
     url: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TransactionCallback {
-    pub transaction_time: String,
-    pub transaction_status: String,
-    pub transaction_id: String,
-    pub status_message: String,
-    pub status_code: String,
-    pub signature_key: String,
-    pub settlement_time: String,
-    pub payment_type: String,
-    pub order_id: String,
-    pub merchant_id: String,
-    pub gross_amount: String,
-    pub fraud_status: String,
-    pub currency: String,
-}
-
 async fn generate(
     State(pool): State<PgPool>,
     Body(payload): Body<TransactionPayload>,
@@ -121,29 +106,25 @@ async fn generate(
     let api_key = BASE64_STANDARD.encode(format!("{}:", server_key));
     let api_key = format!("Basic {}", api_key);
 
-    let TransactionPayload {
-        user_phone,
-        gross_amount,
-        item_name,
-    } = payload;
+    let TransactionPayload { parking_history_id } = payload;
 
-    let user = User::find_one(user_phone, &pool).await?;
+    let parking_history = ParkingHistory::find_one(parking_history_id, &pool).await?;
+    let easypark = User::find_one_by_id(parking_history.easypark_id, &pool).await?;
 
-    // Create the JSON body
     let payment_data = PaymentData {
         payment_type: "gopay".to_string(),
         transaction_details: TransactionDetails {
-            order_id: Uuid::new_v4(),
-            gross_amount,
+            order_id: parking_history.transaction_id,
+            gross_amount: parking_history.amount,
         },
         item_details: vec![ItemDetail {
-            price: gross_amount,
+            price: parking_history.amount,
             quantity: 1,
-            name: item_name,
+            name: "Parking Payment".to_string(),
         }],
         customer_details: CustomerDetails {
-            first_name: user.name,
-            phone: user.phone_number,
+            first_name: easypark.name,
+            phone: easypark.phone_number,
         },
         gopay: Gopay {
             enable_callback: true,
@@ -152,13 +133,9 @@ async fn generate(
         },
     };
 
-    // Serialize the data to JSON
     let json_body = serde_json::to_string(&payment_data).unwrap();
 
-    // Create the reqwest client
     let client = Client::new();
-
-    // Send the request
     let response = client
         .post(url)
         .header("accept", "application/json")
@@ -173,10 +150,65 @@ async fn generate(
     Ok(AppSuccess(data))
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TransactionCallback {
+    pub transaction_time: Option<String>,
+    pub transaction_status: Option<String>,
+    pub transaction_id: Option<String>,
+    pub status_message: Option<String>,
+    pub status_code: Option<String>,
+    pub signature_key: Option<String>,
+    pub settlement_time: Option<String>,
+    pub payment_type: Option<String>,
+    pub order_id: Option<Uuid>,
+    pub merchant_id: Option<String>,
+    pub gross_amount: Option<String>,
+    pub fraud_status: Option<String>,
+    pub currency: Option<String>,
+}
+
+impl TransactionCallback {
+    fn into_trasaction_history(self) -> TransactionHistory {
+        TransactionHistory {
+            id: self.order_id.unwrap(),
+            transaction_time: self.transaction_time,
+            transaction_status: self.transaction_status,
+            transaction_id: self.transaction_id,
+            status_message: self.status_message,
+            status_code: self.status_code,
+            signature_key: self.signature_key,
+            settlement_time: self.settlement_time,
+            payment_type: self.payment_type,
+            order_id: self.order_id,
+            merchant_id: self.merchant_id,
+            gross_amount: self.gross_amount,
+            fraud_status: self.fraud_status,
+            currency: self.currency,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct Callback {
+    parking_history: ParkingHistory,
+    transaction_history: TransactionHistory,
+}
+
 async fn callback(
-    State(_pool): State<PgPool>,
+    State(pool): State<PgPool>,
     Body(payload): Body<TransactionCallback>,
-) -> Result<AppSuccess<()>> {
-    debug!("HERE IS THE BODY FROM MIDTRANS: {:#?}", payload);
-    Ok(AppSuccess(()))
+) -> Result<AppSuccess<Callback>> {
+    let transaction_history = payload.into_trasaction_history();
+    let transaction_history = transaction_history.update(&pool).await?;
+    let parking_history = UpdateParkingHistory::update_ticket_status(
+        transaction_history.id,
+        TicketStatus::NotActive,
+        &pool,
+    )
+    .await?;
+
+    Ok(AppSuccess(Callback {
+        parking_history,
+        transaction_history,
+    }))
 }
