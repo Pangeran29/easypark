@@ -21,9 +21,9 @@ jobs:
     - name: Instal sqlx
       run: cargo search cargo-sqlx
     - name: Create DB
-      run: sqlx database create
+      run: cargo sqlx database create
     - name: Migrate Table
-      run: sqlx migrate run
+      run: cargo sqlx migrate run
     - name: Build
       run: cargo build --verbose
     - name: Run tests
