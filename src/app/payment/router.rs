@@ -7,10 +7,11 @@ use sqlx::{PgPool, Pool, Postgres};
 use uuid::Uuid;
 
 use crate::app::parking_history::ParkingHistory;
+use crate::app::parking_history::ParkingHistoryWithTotalAmount;
 use crate::app::parking_history::TicketStatus;
 use crate::app::parking_history::UpdateParkingHistory;
 use crate::app::user::User;
-use crate::extractor::current_user::authenticate_user;
+use crate::error::aggregate::Error;
 use crate::{
     error::aggregate::Result,
     extractor::{app_body::Body, app_json::AppSuccess},
@@ -97,10 +98,16 @@ struct Action {
     url: String,
 }
 
+#[derive(Serialize, Debug)]
+struct Payment {
+    parking_history: ParkingHistoryWithTotalAmount,
+    transaction: Transaction,
+}
+
 async fn generate(
     State(pool): State<PgPool>,
     Body(payload): Body<TransactionPayload>,
-) -> Result<AppSuccess<Transaction>> {
+) -> Result<AppSuccess<Payment>> {
     let url = std::env::var("MIDTRANS_CHARGE_API").expect("MIDTRANS credential must be set");
     let server_key = std::env::var("MIDTRANS_SERVER_KEY").expect("MIDTRANS credential must be set");
 
@@ -109,17 +116,28 @@ async fn generate(
 
     let TransactionPayload { parking_history_id } = payload;
 
+    let id_transaction = Uuid::new_v4();
     let parking_history = ParkingHistory::find_one(parking_history_id, &pool).await?;
+    let parking_history = ParkingHistory::update_transaction_id(
+        parking_history.transaction_id,
+        id_transaction,
+        &pool,
+    )
+    .await?;
+    if parking_history.ticket_status != TicketStatus::Active {
+        return Err(Error::BadRequest("Ticket is not active".to_string()));
+    }
+
     let easypark = User::find_one_by_id(parking_history.easypark_id, &pool).await?;
 
     let payment_data = PaymentData {
         payment_type: "gopay".to_string(),
         transaction_details: TransactionDetails {
             order_id: parking_history.transaction_id,
-            gross_amount: parking_history.amount,
+            gross_amount: parking_history.total_amount.unwrap_or(0.0),
         },
         item_details: vec![ItemDetail {
-            price: parking_history.amount,
+            price: parking_history.total_amount.unwrap_or(0.0),
             quantity: 1,
             name: "Parking Payment".to_string(),
         }],
@@ -148,7 +166,10 @@ async fn generate(
 
     let data: Transaction = response.json().await?;
 
-    Ok(AppSuccess(data))
+    Ok(AppSuccess(Payment {
+        parking_history,
+        transaction: data
+    }))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -166,6 +187,23 @@ pub struct TransactionCallback {
     pub gross_amount: Option<String>,
     pub fraud_status: Option<String>,
     pub currency: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TransactionCallback2 {
+    pub transaction_time: String,
+    pub transaction_status: String,
+    pub transaction_id: String,
+    pub status_message: String,
+    pub status_code: String,
+    pub signature_key: String,
+    pub settlement_time: String,
+    pub payment_type: String,
+    pub order_id: String,
+    pub merchant_id: String,
+    pub gross_amount: String,
+    pub fraud_status: String,
+    pub currency: String,
 }
 
 impl TransactionCallback {
@@ -194,6 +232,14 @@ struct Callback {
     parking_history: ParkingHistory,
     transaction_history: TransactionHistory,
 }
+
+// async fn callback(
+//     State(pool): State<PgPool>,
+//     Body(payload): Body<TransactionCallback2>,
+// ) -> Result<AppSuccess<()>> {
+//     debug!("{:#?}", payload);
+//     Ok(AppSuccess(()))
+// }
 
 async fn callback(
     State(pool): State<PgPool>,

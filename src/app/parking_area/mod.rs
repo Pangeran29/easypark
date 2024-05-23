@@ -52,6 +52,18 @@ impl ParkingLot {
 
         Ok(parking_lot)
     }
+    
+    pub async fn find_by_owner(owner_id: Uuid, pool: &Pool<Postgres>) -> Result<Vec<ParkingLot>> {
+        let parking_lot = sqlx::query_as!(
+            ParkingLot, 
+            r#"select * from parking_lot where owner_id = $1"#,  
+            owner_id
+        )
+            .fetch_all(pool)
+            .await?;
+
+        Ok(parking_lot)
+    }
 }
 
 

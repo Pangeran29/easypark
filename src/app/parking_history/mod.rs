@@ -1,11 +1,11 @@
-use chrono::NaiveDateTime;
+pub mod router;
+
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-use crate::error::aggregate::Result;
-
-pub mod router;
+use crate::error::aggregate::Result as ResultApp;
 
 #[derive(Debug, Serialize)]
 pub struct ParkingHistory {
@@ -16,11 +16,115 @@ pub struct ParkingHistory {
     pub amount: f64,
     pub parking_lot_id: Uuid,
     pub easypark_id: Uuid,
-    pub keeper_id: Uuid,
     pub owner_id: Uuid,
+    pub keeper_id: Uuid,
     pub transaction_id: Uuid,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParkingHistoryWithTotalAmount {
+    pub id: Uuid,
+    pub ticket_status: TicketStatus,
+    pub vehicle_type: VehicleType,
+    pub payment: PaymentType,
+    pub amount: f64,
+    pub total_amount: Option<f64>,
+    pub parking_lot_id: Uuid,
+    pub easypark_id: Uuid,
+    pub owner_id: Uuid,
+    pub keeper_id: Uuid,
+    pub transaction_id: Uuid,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HistoryFromQuery {
+    pub id: Uuid,
+    pub ticket_status: TicketStatus,
+    pub vehicle_type: VehicleType,
+    pub payment: PaymentType,
+    pub amount: f64,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
+    pub area_name: String,
+    pub address: String,
+    pub image_url: String,
+    pub total_amount: Option<f64>
+}
+
+impl HistoryFromQuery {
+    fn into_related_parking_history(self) -> RelatedParkingHistory {
+        let created_at = match &self.created_at {
+            Some(created_at) => {
+                Some(TimeZone::from_utc_datetime(&Utc, created_at))
+            },
+            None => None,
+        };
+
+        let updated_at = match &self.updated_at {
+            Some(updated_at) => {
+                Some(TimeZone::from_utc_datetime(&Utc, updated_at))
+            },
+            None => None,
+        };
+
+        RelatedParkingHistory {
+            id: self.id,
+            ticket_status: self.ticket_status,
+            vehicle_type: self.vehicle_type,
+            payment: self.payment,
+            total_amount: self.total_amount.unwrap_or(0.0),
+            amount: self.amount,
+            created_at: created_at,
+            updated_at: updated_at,
+            parking_lot: RelatedParkingLot {
+                area_name: self.area_name,
+                address: self.address,
+                image_url: self.image_url,
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct RelatedParkingHistory {
+    pub id: Uuid,
+    pub ticket_status: TicketStatus,
+    pub vehicle_type: VehicleType,
+    pub payment: PaymentType,
+    pub amount: f64,
+    pub total_amount: f64,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub parking_lot: RelatedParkingLot
+}
+
+#[derive(Debug, Serialize)]
+pub struct RelatedParkingLot {
+    pub area_name: String,
+    pub address: String,
+    pub image_url: String,
+}
+
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct AggregateQuery {
+    pub payment_type: Option<PaymentType>,
+    pub ticket_status: Option<TicketStatus>,
+    pub easypark_id: Option<Uuid>,
+    pub owner_id: Option<Uuid>,
+    pub keeper_id: Option<Uuid>,
+    pub created_at_start_filter: Option<NaiveDateTime>,
+    pub created_at_end_filter: Option<NaiveDateTime>,
+    pub take: Option<i64>,
+    pub skip: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParkingHistoryCount {
+    pub data: Option<i64>
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, sqlx::Type, Deserialize, Serialize)]
@@ -39,7 +143,7 @@ pub enum PaymentType {
     Qr
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, sqlx::Type, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, sqlx::Type, Deserialize, Serialize)]
 #[sqlx(type_name = "ticket_status", rename_all = "snake_case")] 
 pub enum TicketStatus {
     Default,
@@ -47,9 +151,8 @@ pub enum TicketStatus {
     NotActive
 }
 
-
 impl ParkingHistory {
-    pub async fn save(self, pool: &Pool<Postgres>) -> Result<ParkingHistory> {
+    pub async fn save(self, pool: &Pool<Postgres>) -> ResultApp<ParkingHistory> {
         let data = sqlx::query_as!(
             ParkingHistory, 
             r#"
@@ -87,7 +190,7 @@ impl ParkingHistory {
         Ok(data)
     }
 
-    pub async fn find_one(id: Uuid, pool: &Pool<Postgres>) -> Result<ParkingHistory> {
+    pub async fn find_one(id: Uuid, pool: &Pool<Postgres>) -> ResultApp<ParkingHistory> {
         let data = sqlx::query_as!(
             ParkingHistory, 
             r#"
@@ -112,6 +215,114 @@ impl ParkingHistory {
 
         Ok(data)
     }
+    
+    pub async fn update_transaction_id(old_transaction_id: Uuid, new_transaction_id: Uuid, pool: &Pool<Postgres>) -> ResultApp<ParkingHistoryWithTotalAmount> {
+        let user = sqlx::query_as!(
+            ParkingHistoryWithTotalAmount, 
+            r#"
+                with update_parking_history as (
+                    update parking_history
+                    set transaction_id = $2
+                    where transaction_id = $1
+                    returning id, 
+                        ticket_status as "ticket_status!: TicketStatus", 
+                        vehicle_type as "vehicle_type!: VehicleType", 
+                        payment as "payment!: PaymentType", 
+                        amount,
+                        parking_lot_id,
+                        easypark_id,
+                        keeper_id,
+                        owner_id,
+                        transaction_id,
+                        created_at, 
+                        updated_at,
+                        ceil(extract(epoch from (now() - created_at)) / 3600) * amount as total_amount
+                ),
+                update_transaction as (
+                    update transaction_history 
+                    set id = $2
+                    where id = $1
+                )
+                select * from update_parking_history
+            "#,
+            old_transaction_id,
+            new_transaction_id
+        )
+            .fetch_one(pool)
+            .await?;
+
+        Ok(user)
+    }
+
+    async fn count(payload: AggregateQuery, pool: &Pool<Postgres>) -> ResultApp<ParkingHistoryCount> {
+        let data = sqlx::query_as!(
+            ParkingHistoryCount, 
+            r#"
+                select count(*) as data
+                from parking_history ph
+                join parking_lot pl on pl.id = ph.parking_lot_id
+                where ($1::timestamp is null or ph.created_at >= $1) and ($2::timestamp is null or ph.created_at <= $2) and
+                    (($3::uuid is not null and ph.easypark_id = $3) or ($4::uuid is not null and ph.owner_id = $4) or ($5::uuid is not null and ph.keeper_id = $5) or ($3::uuid is null and $4::uuid is null and $5::uuid is null)) and
+                    ($6 = 'default' or ph.ticket_status = $6::ticket_status) and
+                    ($7 = 'default' or ph.payment = $7::payment_type)
+            "#,
+            payload.created_at_start_filter,
+            payload.created_at_end_filter,
+            payload.easypark_id,
+            payload.owner_id,
+            payload.keeper_id,
+            payload.ticket_status.unwrap_or(TicketStatus::Default) as TicketStatus,
+            payload.payment_type.unwrap_or(PaymentType::Default) as PaymentType,
+        )
+            .fetch_one(pool)
+            .await?;
+
+        Ok(data)
+    }
+
+    async fn aggregate(payload: AggregateQuery, pool: &Pool<Postgres>) -> ResultApp<Vec<RelatedParkingHistory>> {
+        let data = sqlx::query_as!(
+            HistoryFromQuery, 
+            r#"
+                select ph.id, 
+                    ph.ticket_status as "ticket_status!: TicketStatus", 
+                    ph.vehicle_type as "vehicle_type!: VehicleType", 
+                    ph.payment as "payment!: PaymentType", 
+                    ph.amount,
+                    ph.created_at, 
+                    ph.updated_at,
+                    pl.area_name,
+                    pl.address,
+                    pl.image_url,
+                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount
+                from parking_history ph
+                join parking_lot pl on pl.id = ph.parking_lot_id
+                where ($1::timestamp is null or ph.created_at >= $1) and ($2::timestamp is null or ph.created_at <= $2) and
+                    (($3::uuid is not null and ph.easypark_id = $3) or ($4::uuid is not null and ph.owner_id = $4) or ($5::uuid is not null and ph.keeper_id = $5) or ($3::uuid is null and $4::uuid is null and $5::uuid is null)) and
+                    ($6 = 'default' or ph.ticket_status = $6::ticket_status) and
+                    ($7 = 'default' or ph.payment = $7::payment_type)
+                limit $8
+                offset $9
+            "#,
+            payload.created_at_start_filter,
+            payload.created_at_end_filter,
+            payload.easypark_id,
+            payload.owner_id,
+            payload.keeper_id,
+            payload.ticket_status.unwrap_or(TicketStatus::Default) as TicketStatus,
+            payload.payment_type.unwrap_or(PaymentType::Default) as PaymentType,
+            payload.take,
+            payload.skip,
+        )
+            .fetch_all(pool)
+            .await?;
+
+        let data: Vec<RelatedParkingHistory> = data.into_iter()
+            .map(HistoryFromQuery::into_related_parking_history)
+            .collect();
+
+        Ok(data)
+    }
 }
 
 
@@ -132,7 +343,7 @@ pub struct UpdateParkingHistory {
 }
 
 impl UpdateParkingHistory {
-    pub async fn update(self, id: Uuid, pool: &Pool<Postgres>) -> Result<ParkingHistory> {
+    pub async fn update(self, id: Uuid, pool: &Pool<Postgres>) -> ResultApp<ParkingHistory> {
         let user = sqlx::query_as!(
             ParkingHistory, 
             r#"
@@ -181,7 +392,7 @@ impl UpdateParkingHistory {
         Ok(user)
     }
     
-    pub async fn update_ticket_status(transaction_id: Uuid, status: TicketStatus, pool: &Pool<Postgres>) -> Result<ParkingHistory> {
+    pub async fn update_ticket_status(transaction_id: Uuid, status: TicketStatus, pool: &Pool<Postgres>) -> ResultApp<ParkingHistory> {
         let user = sqlx::query_as!(
             ParkingHistory, 
             r#"

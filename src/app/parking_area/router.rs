@@ -3,7 +3,7 @@ use std::path::Path as StdPath;
 use axum::{
     extract::{Path, State},
     middleware,
-    routing::{patch, post},
+    routing::{get, patch, post},
     Router,
 };
 use chrono::Utc;
@@ -24,6 +24,7 @@ pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
         .route("/", post(create))
         .route("/:id", patch(update).get(detail))
+        .route("/owner/:id", get(get_by_owner))
         .layer(middleware::from_fn(print_request_body))
         .with_state(pool);
 
@@ -142,5 +143,13 @@ async fn detail(
     Path(id): Path<Uuid>,
 ) -> Result<AppSuccess<ParkingLot>> {
     let parking_lot = ParkingLot::find_one(id, &pool).await?;
+    Ok(AppSuccess(parking_lot))
+}
+
+async fn get_by_owner(
+    State(pool): State<PgPool>,
+    Path(owner_id): Path<Uuid>,
+) -> Result<AppSuccess<Vec<ParkingLot>>> {
+    let parking_lot = ParkingLot::find_by_owner(owner_id, &pool).await?;
     Ok(AppSuccess(parking_lot))
 }

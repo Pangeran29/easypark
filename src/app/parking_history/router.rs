@@ -1,10 +1,10 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     middleware,
-    routing::{patch, post},
+    routing::{get, patch, post},
     Router,
 };
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
 use uuid::Uuid;
@@ -20,12 +20,16 @@ use crate::{
     middleware::base::print_request_body,
 };
 
-use super::{ParkingHistory, PaymentType, TicketStatus, UpdateParkingHistory, VehicleType};
+use super::{
+    AggregateQuery, ParkingHistory, PaymentType, RelatedParkingHistory, TicketStatus,
+    UpdateParkingHistory, VehicleType,
+};
 
 pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
         .route("/", post(create))
         .route("/:id", patch(update).get(detail))
+        .route("/aggregate", get(aggregate))
         .layer(middleware::from_fn(print_request_body))
         .with_state(pool);
 
@@ -34,7 +38,6 @@ pub fn build(pool: Pool<Postgres>) -> Router {
 
 #[derive(Serialize, Deserialize)]
 struct CreateParkingHistoryPayload {
-    ticket_status: TicketStatus,
     vehicle_type: VehicleType,
     payment: PaymentType,
     parking_lot_id: Uuid,
@@ -50,7 +53,7 @@ impl CreateParkingHistoryPayload {
     fn into_parking_history(self) -> ParkingHistory {
         ParkingHistory {
             id: Uuid::new_v4(),
-            ticket_status: self.ticket_status,
+            ticket_status: TicketStatus::Default,
             vehicle_type: self.vehicle_type,
             payment: self.payment,
             amount: 0.0,
@@ -112,7 +115,7 @@ async fn create(
     };
 
     let transaction_history = TransactionHistory {
-        id: parking_history.id,
+        id: parking_history.transaction_id,
         transaction_time: None,
         transaction_status: None,
         transaction_id: None,
@@ -269,5 +272,74 @@ async fn detail(
         owner,
         parking_lot,
         transaction,
+    }))
+}
+
+#[derive(Deserialize, Clone, Serialize)]
+pub struct AggregatePayload {
+    pub payment_type: Option<PaymentType>,
+    pub ticket_status: Option<TicketStatus>,
+    pub easypark_id: Option<Uuid>,
+    pub owner_id: Option<Uuid>,
+    pub keeper_id: Option<Uuid>,
+    pub created_at_start_filter: Option<DateTime<Utc>>,
+    pub created_at_end_filter: Option<DateTime<Utc>>,
+    pub take: Option<i64>,
+    pub skip: Option<i64>,
+}
+
+impl AggregatePayload {
+    fn into_aggregate_query(self) -> AggregateQuery {
+        let created_at_start_filter = match self.created_at_start_filter {
+            Some(date) => Some(date.naive_utc()),
+            None => None,
+        };
+
+        let created_at_end_filter = match self.created_at_end_filter {
+            Some(date) => Some(date.naive_utc()),
+            None => None,
+        };
+
+        AggregateQuery {
+            payment_type: self.payment_type,
+            ticket_status: self.ticket_status,
+            easypark_id: self.easypark_id,
+            owner_id: self.owner_id,
+            keeper_id: self.keeper_id,
+            created_at_start_filter,
+            created_at_end_filter,
+            take: self.take,
+            skip: self.skip,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct Aggregate {
+    meta: MetaAggregate,
+    parking_history: Vec<RelatedParkingHistory>,
+}
+
+#[derive(Serialize)]
+struct MetaAggregate {
+    total_data: i64,
+    query: AggregatePayload,
+}
+
+async fn aggregate(
+    State(pool): State<PgPool>,
+    Query(payload): Query<AggregatePayload>,
+) -> Result<AppSuccess<Aggregate>> {
+    let query = payload.clone().into_aggregate_query();
+
+    let count = ParkingHistory::count(query.clone(), &pool).await?;
+    let parking_history = ParkingHistory::aggregate(query.clone(), &pool).await?;
+
+    Ok(AppSuccess(Aggregate {
+        meta: MetaAggregate {
+            total_data: count.data.unwrap_or(0),
+            query: payload,
+        },
+        parking_history,
     }))
 }
