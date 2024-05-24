@@ -27,16 +27,18 @@ jobs:
         cat .env 
         cat .cargo/config.toml
 
-    # - name: Setup docker (missing on MacOS)
-    #   if: runner.os == 'macos'
-    #   run: |
-    #     brew install docker
-    #     colima start
+    - name: Setup docker (missing on MacOS)
+      if: runner.os == 'macos'
+      run: |
+        brew install docker
+        colima start
 
-    # - name: Build and Push Docker image
-    #   uses: mr-smithers-excellent/docker-build-push@v4
-    #   with: 
-    #     image: saputra/easypark-backend
-    #     registry: docker.io
-    #     username: ${{ secrets.DOCKER_USERNAME }}
-    #     password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Build and Push Docker image
+      uses: mr-smithers-excellent/docker-build-push@v4
+      with: 
+         image: rsaputra11/easy_park_rust
+         tags: v1, latest
+         registry: https://hub.docker.com/
+         dockerfile: Dockerfile.stage
+         username: ${{ secrets.DOCKER_USERNAME }}
+         password: ${{ secrets.DOCKER_PASSWORD }}
