@@ -53,7 +53,7 @@ jobs:
       with: 
          push: true
          tags: rsaputra11/easy_park_rust:${{ github.sha }}
-         context: Dockerfile.stage
+         context: ./Dockerfile.stage
          
 
     # - name: Push to Ec2
