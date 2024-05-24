@@ -44,10 +44,10 @@ jobs:
         brew install --cask docker dockmate
         
     - name: Build and Push Docker image
-      uses: mr-smithers-excellent/docker-build-push@v4
+      uses: mr-smithers-excellent/docker-build-push@v6
       with: 
          image: rsaputra11/easy_park_rust
-         addLatest: true
+         tags: v1.0,latest
          registry: docker.io
          dockerfile: Dockerfile.stage
          username: ${{ secrets.DOCKER_USERNAME }}
