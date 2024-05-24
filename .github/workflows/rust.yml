@@ -38,7 +38,7 @@ jobs:
       with: 
          image: rsaputra11/easy_park_rust
          tags: v1, latest
-         registry: https://hub.docker.com/
+         registry: docker.io
          dockerfile: Dockerfile.stage
          username: ${{ secrets.DOCKER_USERNAME }}
          password: ${{ secrets.DOCKER_PASSWORD }}
