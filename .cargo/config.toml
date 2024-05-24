@@ -1,5 +1,5 @@
 [env]
-RUST_LOG = "backend_parking=debug"
-DATABASE_URL = "postgres://postgres:mypassword@localhost:5431/easypark"
-JWT_SECRET = "eyJhbGciOiJIUzI1NiJ9.eyJJc3N1ZXIiOiJKb2pvam93In0.KUJItRYfy9wbORLFoU93LB0dDlFNjlGueOXhfWGGHz0"
+RUST_LOG= "backend_parking=debug"
+DATABASE_URL= "postgresql://easypark_owner:XTVzOpa94InE@ep-damp-meadow-a5a41qis.us-east-2.aws.neon.tech/easypark?sslmode=require"
+JWT_SECRET= "eyJhbGciOiJIUzI1NiJ9.eyJJc3N1ZXIiOiJKb2pvam93In0.KUJItRYfy9wbORLFoU93LB0dDlFNjlGueOXhfWGGHz0"
 # RUST_BACKTRACE = 1
