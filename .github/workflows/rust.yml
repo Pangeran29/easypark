@@ -24,7 +24,8 @@ jobs:
       run: |
         echo "${{ secrets.API_KEY_STAGING }}" > .env
         echo "${{ secrets.TOML_KEY_STAGGING }}" > .cargo/config.toml
-        cat .env && cat .cargo/config.toml
+        cat .env 
+        cat .cargo/config.toml
 
     # - name: Setup docker (missing on MacOS)
     #   if: runner.os == 'macos'
