@@ -47,7 +47,7 @@ jobs:
       uses: mr-smithers-excellent/docker-build-push@v4
       with: 
          image: rsaputra11/easy_park_rust
-         tags: latest
+         tags: ${{ github.sha }}
          registry: docker.io
          dockerfile: Dockerfile.stage
          username: ${{ secrets.DOCKER_USERNAME }}
