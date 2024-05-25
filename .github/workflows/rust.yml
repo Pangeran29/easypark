@@ -62,6 +62,6 @@ jobs:
         script: |
           docker login --username=${{ secrets.DOCKER_USERNAME }} --password=${{ secrets.DOCKER_PASSWORD }} docker.io
           docker stop easy_park_rust || true
-          docker rm web || true
+          docker rm easy_park_rust || true
           docker pull ${{ secrets.DOCKER_USERNAME }}/easy_park_rust:${{ secrets.DOCKER_TAGS }}
-          docker run -d --name easy_park_rust -p 3000:80 ${{ secrets.DOCKER_USERNAME }}/easy_park_rust:${{ secrets.DOCKER_TAGS }}
+          docker run -d --name easy_park_rust -p 3000:8080 ${{ secrets.DOCKER_USERNAME }}/easy_park_rust:${{ secrets.DOCKER_TAGS }}
