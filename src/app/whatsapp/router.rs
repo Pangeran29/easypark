@@ -45,7 +45,7 @@ async fn send(
     let text = format!("Here+is+your+OTP+{}", otp);
     let url = format!(
         "https://api.callmebot.com/whatsapp.php?phone={}&text={}&apikey=7839565",
-        user.phone, text
+        user.phone_number, text
     );
 
     let body = reqwest::get(url).await?.text().await?;
