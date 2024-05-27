@@ -54,7 +54,7 @@ async fn main() {
             250 * 1024 * 1024, /* 250mb */
         ));
 
-    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
     info!("Server running on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
