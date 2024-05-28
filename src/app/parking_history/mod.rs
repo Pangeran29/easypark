@@ -132,9 +132,27 @@ pub struct AggregateQuery {
     pub skip: Option<i64>,
 }
 
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct CalcQuery {
+    pub created_at_start_filter: NaiveDateTime,
+    pub created_at_end_filter: NaiveDateTime,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ParkingHistoryCount {
     pub data: Option<i64>
+}
+
+#[derive(Debug, Serialize)]
+pub struct MonthlyRecord {
+    pub month: Option<String>,
+    pub total_history: Option<i64>
+}
+
+#[derive(Debug, Serialize)]
+pub struct CalcHistory {
+    pub sum_all: Option<f64>,
+    pub total_history: Option<i64>
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, sqlx::Type, Deserialize, Serialize)]
@@ -373,6 +391,48 @@ impl ParkingHistory {
         let data: Vec<RelatedParkingHistory> = data.into_iter()
             .map(HistoryFromQuery::into_related_parking_history)
             .collect();
+
+        Ok(data)
+    }
+    
+    async fn monthly_record(pool: &Pool<Postgres>) -> ResultApp<Vec<MonthlyRecord>> {
+        let data = sqlx::query_as!(
+            MonthlyRecord, 
+            r#"
+                SELECT
+                    TO_CHAR(created_at, 'FMMonth') AS month,
+                    COUNT(*) AS total_history
+                FROM
+                    parking_history
+                WHERE
+                    EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)
+                GROUP BY
+                    month
+                ORDER BY
+                    MIN(created_at);
+            "#
+        )
+            .fetch_all(pool)
+            .await?;
+
+        Ok(data)
+    }
+
+    async fn filtered_calc(payload: CalcQuery, pool: &Pool<Postgres>) -> ResultApp<CalcHistory> {
+        let data = sqlx::query_as!(
+            CalcHistory, 
+            r#"
+                select sum(cast(th.gross_amount AS DOUBLE PRECISION)) as sum_all ,
+                    count(*) as total_history
+                from parking_history ph
+                join transaction_history th ON ph.transaction_id = th.id 
+                where ticket_status = 'not_active' and ph.created_at >= $1 and ph.created_at <= $2
+            "#,
+            payload.created_at_start_filter,
+            payload.created_at_end_filter
+        )
+            .fetch_one(pool)
+            .await?;
 
         Ok(data)
     }
