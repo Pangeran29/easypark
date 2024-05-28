@@ -7,7 +7,6 @@ use axum::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
-use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -31,6 +30,7 @@ pub fn build(pool: Pool<Postgres>) -> Router {
         .route("/", post(create))
         .route("/:id", patch(update).get(detail))
         .route("/aggregate", get(aggregate))
+        .route("/active-ticket/:id", get(get_active_ticket))
         .layer(middleware::from_fn(print_request_body))
         .with_state(pool);
 
@@ -47,6 +47,8 @@ struct CreateParkingHistoryPayload {
     transaction_id: Option<Uuid>,
     created_at: Option<NaiveDateTime>,
     updated_at: Option<NaiveDateTime>,
+    check_in_date: Option<NaiveDateTime>,
+    check_out_date: Option<NaiveDateTime>,
 }
 
 impl CreateParkingHistoryPayload {
@@ -64,6 +66,8 @@ impl CreateParkingHistoryPayload {
             transaction_id: Uuid::new_v4(),
             created_at: Some(Utc::now().naive_utc()),
             updated_at: None,
+            check_in_date: None,
+            check_out_date: None,
         }
     }
 }
@@ -87,21 +91,8 @@ async fn create(
         ));
     }
 
-    let aggregate_payload = AggregatePayload {
-        payment_type: None,
-        ticket_status: Some(TicketStatus::Active),
-        easypark_id: Some(easypark.id),
-        owner_id: None,
-        keeper_id: None,
-        created_at_start_filter: None,
-        created_at_end_filter: None,
-        take: None,
-        skip: None,
-    };
+    let related_history = ParkingHistory::find_active_ticket(easypark.id, &pool).await?;
 
-    let related_history =
-        ParkingHistory::aggregate(aggregate_payload.into_aggregate_query(), &pool).await?;
-    
     if related_history.len() >= 1 {
         return Err(Error::BadRequest("Ticket already issue".to_string()));
     }
@@ -164,9 +155,11 @@ struct UpdateParkingHistoryPayload {
     parking_lot_id: Uuid,
     easypark_id: Uuid,
     keeper_id: Uuid,
-    owner_id: Uuid,
+    owner_id: Option<Uuid>,
     created_at: Option<NaiveDateTime>,
     updated_at: Option<NaiveDateTime>,
+    check_in_date: Option<NaiveDateTime>,
+    check_out_date: Option<NaiveDateTime>,
 }
 
 impl UpdateParkingHistoryPayload {
@@ -180,10 +173,12 @@ impl UpdateParkingHistoryPayload {
             parking_lot_id: Some(self.parking_lot_id),
             easypark_id: Some(self.easypark_id),
             keeper_id: Some(self.keeper_id),
-            owner_id: Some(self.owner_id),
+            owner_id: self.owner_id,
             transaction_id: None,
             created_at: None,
             updated_at: Some(Utc::now().naive_utc()),
+            check_in_date: None,
+            check_out_date: None,
         }
     }
 }
@@ -193,7 +188,7 @@ async fn update(
     Path(id): Path<Uuid>,
     Body(payload): Body<UpdateParkingHistoryPayload>,
 ) -> Result<AppSuccess<History>> {
-    let parking_history = payload.into_update_parking_history();
+    let mut parking_history = payload.into_update_parking_history();
 
     match &parking_history.easypark_id {
         Some(id) => {
@@ -204,6 +199,15 @@ async fn update(
                 ));
             }
         }
+        None => {}
+    }
+
+    match parking_history.ticket_status {
+        Some(status) => match status {
+            TicketStatus::Default => {}
+            TicketStatus::Active => parking_history.check_in_date = Some(Utc::now().naive_utc()),
+            TicketStatus::NotActive => {}
+        },
         None => {}
     }
 
@@ -355,4 +359,16 @@ async fn aggregate(
         },
         parking_history,
     }))
+}
+
+async fn get_active_ticket(
+    State(pool): State<PgPool>,
+    Path(id): Path<Uuid>,
+) -> Result<AppSuccess<RelatedParkingHistory>> {
+    let mut active_ticket = ParkingHistory::find_active_ticket(id, &pool).await?;
+    if active_ticket.len() < 1 {
+        return Err(Error::BadRequest("Ticket is not issue".to_string()));
+    }
+    let active_ticket = active_ticket.remove(0);
+    Ok(AppSuccess(active_ticket))
 }

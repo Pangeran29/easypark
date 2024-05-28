@@ -129,24 +129,27 @@ impl User {
         let user = sqlx::query_as!(
             User, 
             r#"
-                select id, 
-                    phone_number, 
-                    name, 
-                    nik, 
-                    role as "role!: Role", 
-                    status as "status!:UserStatus", 
-                    otp, 
-                    created_at, 
-                    updated_at, 
-                    parking_lot_id 
-                from "user"
-                where ($3::Uuid is null or parking_lot_id >= $3)
+                select u.id, 
+                    u.phone_number, 
+                    u.name, 
+                    u.nik, 
+                    u.role as "role!: Role", 
+                    u.status as "status!:UserStatus", 
+                    u.otp, 
+                    u.created_at, 
+                    u.updated_at, 
+                    u.parking_lot_id 
+                from "user" u
+                join "parking_lot" pl on u.parking_lot_id = pl.id
+                where ($3::Uuid is null or parking_lot_id = $3) and 
+                    ($4::Uuid is null or pl.owner_id = $4)
                 limit $1
                 offset $2
             "#,
             payload.take,
             payload.skip,
-            payload.belong_to_parking_lot_id
+            payload.belong_to_parking_lot_id,
+            payload.owner_id
         )
             .fetch_all(pool)
             .await?;
@@ -158,10 +161,13 @@ impl User {
         let count = sqlx::query_as!(
             SqlxCount, 
             r#"
-                select count(*) as data from "user"
-                where ($1::Uuid is null or parking_lot_id >= $1)
+                select count(*) as data from "user" as u
+                join "parking_lot" pl on u.parking_lot_id = pl.id
+                where ($1::Uuid is null or parking_lot_id = $1) and 
+                    ($2::Uuid is null or pl.owner_id = $2)
             "#,
-            payload.belong_to_parking_lot_id
+            payload.belong_to_parking_lot_id,
+            payload.owner_id
         )
             .fetch_one(pool)
             .await?;

@@ -1,6 +1,7 @@
 use axum::{extract::State, middleware, routing::post, Router};
 use base64::prelude::*;
 use base64::Engine;
+use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
@@ -250,6 +251,7 @@ async fn callback(
     let parking_history = UpdateParkingHistory::update_ticket_status(
         transaction_history.id,
         TicketStatus::NotActive,
+        Utc::now().naive_utc(),
         &pool,
     )
     .await?;
