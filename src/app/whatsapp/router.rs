@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use axum::{extract::State, middleware, routing::post, Router};
 use chrono::{DateTime, Datelike, Duration, Utc};
 use rand::{rngs::OsRng, Rng};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
-use tracing::debug;
 
 use crate::{
     app::user::User,
@@ -42,14 +44,34 @@ async fn send(
     let mut rng = OsRng;
     let otp: i32 = rng.gen_range(100000..1000000);
 
-    let text = format!("Here+is+your+OTP+{}", otp);
+    let account_sid = std::env::var("TWILIO_ACCOUNT_SID").expect("MIDTRANS credential must be set");
+    let auth_token = std::env::var("TWILIO_AUTH_TOKEN").expect("MIDTRANS credential must be set");
+
     let url = format!(
-        "https://api.callmebot.com/whatsapp.php?phone={}&text={}&apikey=7839565",
-        user.phone_number, text
+        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+        account_sid
     );
 
-    let body = reqwest::get(url).await?.text().await?;
-    debug!("Whatsapp Reqwest : {}", body);
+    let to_number = format!("whatsapp:+{}", user.phone_number);
+
+    let mut params = HashMap::new();
+    params.insert("To", to_number.as_str());
+    params.insert("From", "whatsapp:+14155238886");
+    params.insert("Body", "Your appointment is coming up on July 21 at 3PM");
+
+    let client = Client::new();
+    let response = client
+        .post(&url)
+        .basic_auth(account_sid, Some(auth_token))
+        .form(&params)
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        println!("Message sent successfully!");
+    } else {
+        eprintln!("Failed to send message: {:?}", response.text().await?);
+    }
 
     let now = Utc::now();
     let exp = now
