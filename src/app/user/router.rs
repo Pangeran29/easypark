@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     middleware,
     routing::{patch, post},
     Router,
@@ -19,11 +19,8 @@ use super::{Role, UpdateUser, User, UserStatus};
 
 pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
-        .route("/", post(create))
-        .route(
-            "/:phone_number",
-            patch(update).get(get_by_phone_number),
-        )
+        .route("/", post(create).get(aggregate))
+        .route("/:phone_number", patch(update).get(get_by_phone_number))
         .layer(middleware::from_fn(print_request_body))
         .with_state(pool);
 
@@ -46,6 +43,7 @@ struct CreateUserPayload {
     role: Role,
     status: UserStatus,
     otp: Option<i32>,
+    belong_to_parking_lot_id: Option<Uuid>,
 }
 
 impl CreateUserPayload {
@@ -60,6 +58,7 @@ impl CreateUserPayload {
             otp: None,
             created_at: Some(Utc::now().naive_utc()),
             updated_at: None,
+            parking_lot_id: self.belong_to_parking_lot_id,
         }
     }
 }
@@ -81,6 +80,7 @@ struct UpdateUserPayload {
     role: Option<Role>,
     status: Option<UserStatus>,
     otp: Option<i32>,
+    belong_to_parking_lot_id: Option<Uuid>,
 }
 
 impl UpdateUserPayload {
@@ -95,6 +95,7 @@ impl UpdateUserPayload {
             otp: self.otp,
             created_at: None,
             updated_at: Some(Utc::now().naive_utc()),
+            parking_lot_id: self.belong_to_parking_lot_id,
         }
     }
 }
@@ -107,4 +108,38 @@ async fn update(
     let user = payload.into_update_user();
     let user = user.update(phone_number, &pool).await?;
     Ok(AppSuccess(user))
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub struct UserAggregatePayload {
+    pub belong_to_parking_lot_id: Option<Uuid>,
+    pub take: Option<i64>,
+    pub skip: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct Aggregate {
+    meta: MetaAggregate,
+    user: Vec<User>,
+}
+
+#[derive(Serialize)]
+struct MetaAggregate {
+    total_data: i64,
+    query: UserAggregatePayload,
+}
+
+async fn aggregate(
+    State(pool): State<PgPool>,
+    Query(payload): Query<UserAggregatePayload>,
+) -> Result<AppSuccess<Aggregate>> {
+    let count = User::count(&pool, payload).await?;
+    let user = User::aggregate(&pool, payload).await?;
+    Ok(AppSuccess(Aggregate {
+        meta: MetaAggregate {
+            total_data: count.data.unwrap_or(0),
+            query: payload,
+        },
+        user,
+    }))
 }

@@ -35,7 +35,7 @@ pub fn build(pool: Pool<Postgres>) -> Router {
 struct CreateParkingLotPayload {
     area_name: String,
     address: String,
-    file_name: String,
+    file_name: Option<String>,
     car_cost: f64,
     motor_cost: f64,
     owner_id: Uuid,
@@ -47,7 +47,7 @@ impl CreateParkingLotPayload {
             id: Uuid::new_v4(),
             area_name: self.area_name,
             address: self.address,
-            image_url: self.file_name,
+            image_url: "some url".to_string(),
             car_cost: self.car_cost,
             motor_cost: self.motor_cost,
             owner_id: self.owner_id,
@@ -68,11 +68,11 @@ async fn create(
         ));
     }
 
-    let dir = format!("./public/files/{}", payload.file_name);
-    let path = StdPath::new(&dir);
-    if !path.exists() {
-        return Err(Error::BadRequest("Image not found".to_string()));
-    }
+    // let dir = format!("./public/files/{}", payload.file_name);
+    // let path = StdPath::new(&dir);
+    // if !path.exists() {
+    //     return Err(Error::BadRequest("Image not found".to_string()));
+    // }
 
     let parking_lot = payload.into_parking_lot();
     let parking_lot = parking_lot.save(&pool).await?;
