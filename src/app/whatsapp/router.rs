@@ -53,11 +53,12 @@ async fn send(
     );
 
     let to_number = format!("whatsapp:+{}", user.phone_number);
+    let to_body = format!("Your OTP: {}", otp);
 
     let mut params = HashMap::new();
     params.insert("To", to_number.as_str());
     params.insert("From", "whatsapp:+14155238886");
-    params.insert("Body", "Your appointment is coming up on July 21 at 3PM");
+    params.insert("Body", to_body.as_str());
 
     let client = Client::new();
     let response = client

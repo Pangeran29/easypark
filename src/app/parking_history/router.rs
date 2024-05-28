@@ -7,6 +7,7 @@ use axum::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -43,7 +44,6 @@ struct CreateParkingHistoryPayload {
     parking_lot_id: Uuid,
     easypark_id: Uuid,
     keeper_id: Uuid,
-    owner_id: Uuid,
     transaction_id: Option<Uuid>,
     created_at: Option<NaiveDateTime>,
     updated_at: Option<NaiveDateTime>,
@@ -60,7 +60,7 @@ impl CreateParkingHistoryPayload {
             parking_lot_id: self.parking_lot_id,
             easypark_id: self.easypark_id,
             keeper_id: self.keeper_id,
-            owner_id: self.owner_id,
+            owner_id: Uuid::new_v4(),
             transaction_id: Uuid::new_v4(),
             created_at: Some(Utc::now().naive_utc()),
             updated_at: None,
@@ -87,6 +87,25 @@ async fn create(
         ));
     }
 
+    let aggregate_payload = AggregatePayload {
+        payment_type: None,
+        ticket_status: Some(TicketStatus::Active),
+        easypark_id: Some(easypark.id),
+        owner_id: None,
+        keeper_id: None,
+        created_at_start_filter: None,
+        created_at_end_filter: None,
+        take: None,
+        skip: None,
+    };
+
+    let related_history =
+        ParkingHistory::aggregate(aggregate_payload.into_aggregate_query(), &pool).await?;
+    
+    if related_history.len() >= 1 {
+        return Err(Error::BadRequest("Ticket already issue".to_string()));
+    }
+
     let keeper = User::find_one_by_id(parking_history.keeper_id, &pool).await?;
     if keeper.role != Role::ParkKeeper {
         return Err(Error::BadRequest(
@@ -94,17 +113,10 @@ async fn create(
         ));
     }
 
-    let owner = User::find_one_by_id(parking_history.owner_id, &pool).await?;
-    if owner.role != Role::ParkOwner {
-        return Err(Error::BadRequest(
-            "Provided owner id is not having ParkOwner role".to_string(),
-        ));
-    }
-
     let parking_lot = ParkingLot::find_one(parking_history.parking_lot_id, &pool).await?;
-    if parking_lot.owner_id != owner.id {
+    if keeper.parking_lot_id != Some(parking_lot.id) {
         return Err(Error::BadRequest(
-            "Parking lot is not owned by the provided owner id".to_string(),
+            "Provided keeper is not belong to provided parking keeper".to_string(),
         ));
     }
 
@@ -134,6 +146,7 @@ async fn create(
     let transaction_history = transaction_history.save(&pool).await?;
 
     parking_history.transaction_id = transaction_history.id;
+    parking_history.owner_id = parking_lot.owner_id;
 
     let parking_history = parking_history.save(&pool).await?;
 

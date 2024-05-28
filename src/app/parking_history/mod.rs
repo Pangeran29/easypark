@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-use crate::error::aggregate::Result as ResultApp;
+use crate::{error::aggregate::Result as ResultApp, types::count::SqlxCount};
 
 #[derive(Debug, Serialize)]
 pub struct ParkingHistory {
@@ -254,9 +254,9 @@ impl ParkingHistory {
         Ok(user)
     }
 
-    async fn count(payload: AggregateQuery, pool: &Pool<Postgres>) -> ResultApp<ParkingHistoryCount> {
+    async fn count(payload: AggregateQuery, pool: &Pool<Postgres>) -> ResultApp<SqlxCount> {
         let data = sqlx::query_as!(
-            ParkingHistoryCount, 
+            SqlxCount, 
             r#"
                 select count(*) as data
                 from parking_history ph
