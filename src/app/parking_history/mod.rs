@@ -21,6 +21,8 @@ pub struct ParkingHistory {
     pub transaction_id: Uuid,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
+    pub check_in_date: Option<NaiveDateTime>,
+    pub check_out_date: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Serialize)]
@@ -38,6 +40,8 @@ pub struct ParkingHistoryWithTotalAmount {
     pub transaction_id: Uuid,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
+    pub check_in_date: Option<NaiveDateTime>,
+    pub check_out_date: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,7 +56,9 @@ pub struct HistoryFromQuery {
     pub area_name: String,
     pub address: String,
     pub image_url: String,
-    pub total_amount: Option<f64>
+    pub total_amount: Option<f64>,
+    pub check_in_date: Option<NaiveDateTime>,
+    pub check_out_date: Option<NaiveDateTime>,
 }
 
 impl HistoryFromQuery {
@@ -78,8 +84,10 @@ impl HistoryFromQuery {
             payment: self.payment,
             total_amount: self.total_amount.unwrap_or(0.0),
             amount: self.amount,
-            created_at: created_at,
-            updated_at: updated_at,
+            created_at,
+            updated_at,
+            check_in_date: self.check_in_date,
+            check_out_date: self.check_out_date,
             parking_lot: RelatedParkingLot {
                 area_name: self.area_name,
                 address: self.address,
@@ -99,7 +107,9 @@ pub struct RelatedParkingHistory {
     pub total_amount: f64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub parking_lot: RelatedParkingLot
+    pub check_in_date: Option<NaiveDateTime>,
+    pub check_out_date: Option<NaiveDateTime>,
+    pub parking_lot: RelatedParkingLot,
 }
 
 #[derive(Debug, Serialize)]
@@ -157,7 +167,7 @@ impl ParkingHistory {
             ParkingHistory, 
             r#"
                 insert into "parking_history" 
-                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
                 returning id, 
                     ticket_status as "ticket_status!: TicketStatus", 
                     vehicle_type as "vehicle_type!: VehicleType", 
@@ -169,7 +179,9 @@ impl ParkingHistory {
                     owner_id,
                     transaction_id,
                     created_at, 
-                    updated_at
+                    updated_at,
+                    check_in_date,
+                    check_out_date
             "#,  
             self.id,
             self.ticket_status as TicketStatus,
@@ -182,7 +194,9 @@ impl ParkingHistory {
             self.owner_id,
             self.transaction_id,
             self.created_at,
-            self.updated_at
+            self.updated_at,
+            self.check_in_date,
+            self.check_out_date,
         )
             .fetch_one(pool)
             .await?;
@@ -205,7 +219,9 @@ impl ParkingHistory {
                     owner_id,
                     transaction_id,
                     created_at, 
-                    updated_at
+                    updated_at,
+                    check_in_date,
+                    check_out_date
                 from "parking_history" 
                 where id = $1"#,  
             id
@@ -236,6 +252,8 @@ impl ParkingHistory {
                         transaction_id,
                         created_at, 
                         updated_at,
+                        check_in_date,
+                        check_out_date,
                         ceil(extract(epoch from (now() - created_at)) / 3600) * amount as total_amount
                 ),
                 update_transaction as (
@@ -294,7 +312,9 @@ impl ParkingHistory {
                     pl.area_name,
                     pl.address,
                     pl.image_url,
-                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount
+                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount,
+                    ph.check_in_date, 
+                    ph.check_out_date
                 from parking_history ph
                 join parking_lot pl on pl.id = ph.parking_lot_id
                 where ($1::timestamp is null or ph.created_at >= $1) and ($2::timestamp is null or ph.created_at <= $2) and
@@ -338,7 +358,9 @@ impl ParkingHistory {
                     pl.area_name,
                     pl.address,
                     pl.image_url,
-                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount
+                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount,
+                    ph.check_in_date,
+                    ph.check_out_date
                 from parking_history ph
                 join parking_lot pl on pl.id = ph.parking_lot_id
                 where ph.easypark_id = $1 and ph.ticket_status in ('active', 'default')
@@ -371,6 +393,8 @@ pub struct UpdateParkingHistory {
     pub transaction_id: Option<Uuid>,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
+    pub check_in_date: Option<NaiveDateTime>,
+    pub check_out_date: Option<NaiveDateTime>,
 }
 
 impl UpdateParkingHistory {
@@ -389,8 +413,10 @@ impl UpdateParkingHistory {
                     owner_id = coalesce($8, "parking_history".owner_id),                     
                     transaction_id = coalesce($9, "parking_history".transaction_id),                     
                     created_at = coalesce($10, "parking_history".created_at),                     
-                    updated_at = coalesce($11, "parking_history".updated_at)
-                where id = $12
+                    updated_at = coalesce($11, "parking_history".updated_at),
+                    check_in_date = coalesce($12, "parking_history".check_in_date),                     
+                    check_out_date = coalesce($13, "parking_history".check_out_date)
+                where id = $14
                 returning id, 
                     ticket_status as "ticket_status!: TicketStatus", 
                     vehicle_type as "vehicle_type!: VehicleType", 
@@ -402,7 +428,9 @@ impl UpdateParkingHistory {
                     owner_id,
                     transaction_id,
                     created_at, 
-                    updated_at
+                    updated_at,
+                    check_in_date,
+                    check_out_date
             "#,
             self.ticket_status.unwrap_or(TicketStatus::Default) as TicketStatus,
             self.vehicle_type.unwrap_or(VehicleType::Default) as VehicleType,
@@ -415,6 +443,8 @@ impl UpdateParkingHistory {
             self.transaction_id,
             self.created_at,
             self.updated_at,
+            self.check_in_date,
+            self.check_out_date,
             id
         )
             .fetch_one(pool)
@@ -423,13 +453,14 @@ impl UpdateParkingHistory {
         Ok(user)
     }
     
-    pub async fn update_ticket_status(transaction_id: Uuid, status: TicketStatus, pool: &Pool<Postgres>) -> ResultApp<ParkingHistory> {
+    pub async fn update_ticket_status(transaction_id: Uuid, status: TicketStatus, check_out_date: NaiveDateTime, pool: &Pool<Postgres>) -> ResultApp<ParkingHistory> {
         let user = sqlx::query_as!(
             ParkingHistory, 
             r#"
                 update "parking_history" 
-                set ticket_status = coalesce($1, "parking_history".ticket_status)
-                where transaction_id = $2
+                set ticket_status = coalesce($1, "parking_history".ticket_status),
+                    check_out_date = coalesce($2, "parking_history".check_out_date)
+                where transaction_id = $3
                 returning id, 
                     ticket_status as "ticket_status!: TicketStatus", 
                     vehicle_type as "vehicle_type!: VehicleType", 
@@ -441,9 +472,12 @@ impl UpdateParkingHistory {
                     owner_id,
                     transaction_id,
                     created_at, 
-                    updated_at
+                    updated_at,
+                    check_in_date,
+                    check_out_date
             "#,
             status as TicketStatus,
+            check_out_date,
             transaction_id
         )
             .fetch_one(pool)

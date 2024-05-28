@@ -47,6 +47,8 @@ struct CreateParkingHistoryPayload {
     transaction_id: Option<Uuid>,
     created_at: Option<NaiveDateTime>,
     updated_at: Option<NaiveDateTime>,
+    check_in_date: Option<NaiveDateTime>,
+    check_out_date: Option<NaiveDateTime>,
 }
 
 impl CreateParkingHistoryPayload {
@@ -64,6 +66,8 @@ impl CreateParkingHistoryPayload {
             transaction_id: Uuid::new_v4(),
             created_at: Some(Utc::now().naive_utc()),
             updated_at: None,
+            check_in_date: None,
+            check_out_date: None,
         }
     }
 }
@@ -149,11 +153,13 @@ struct UpdateParkingHistoryPayload {
     vehicle_type: VehicleType,
     payment: PaymentType,
     parking_lot_id: Uuid,
-    easypark_id: Option<Uuid>,
+    easypark_id: Uuid,
     keeper_id: Uuid,
-    owner_id: Uuid,
+    owner_id: Option<Uuid>,
     created_at: Option<NaiveDateTime>,
     updated_at: Option<NaiveDateTime>,
+    check_in_date: Option<NaiveDateTime>,
+    check_out_date: Option<NaiveDateTime>,
 }
 
 impl UpdateParkingHistoryPayload {
@@ -165,12 +171,14 @@ impl UpdateParkingHistoryPayload {
             payment: Some(self.payment),
             amount: None,
             parking_lot_id: Some(self.parking_lot_id),
-            easypark_id: self.easypark_id,
+            easypark_id: Some(self.easypark_id),
             keeper_id: Some(self.keeper_id),
-            owner_id: Some(self.owner_id),
+            owner_id: self.owner_id,
             transaction_id: None,
             created_at: None,
             updated_at: Some(Utc::now().naive_utc()),
+            check_in_date: None,
+            check_out_date: None,
         }
     }
 }
@@ -180,7 +188,7 @@ async fn update(
     Path(id): Path<Uuid>,
     Body(payload): Body<UpdateParkingHistoryPayload>,
 ) -> Result<AppSuccess<History>> {
-    let parking_history = payload.into_update_parking_history();
+    let mut parking_history = payload.into_update_parking_history();
 
     match &parking_history.easypark_id {
         Some(id) => {
@@ -191,6 +199,15 @@ async fn update(
                 ));
             }
         }
+        None => {}
+    }
+
+    match parking_history.ticket_status {
+        Some(status) => match status {
+            TicketStatus::Default => {}
+            TicketStatus::Active => parking_history.check_in_date = Some(Utc::now().naive_utc()),
+            TicketStatus::NotActive => {}
+        },
         None => {}
     }
 
