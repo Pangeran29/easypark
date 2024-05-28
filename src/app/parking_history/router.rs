@@ -99,9 +99,8 @@ async fn create(
         skip: None,
     };
 
-    let related_history =
-        ParkingHistory::aggregate(aggregate_payload.into_aggregate_query(), &pool).await?;
-    
+    let related_history = ParkingHistory::findActiveTicket(easypark.id, &pool).await?;
+
     if related_history.len() >= 1 {
         return Err(Error::BadRequest("Ticket already issue".to_string()));
     }

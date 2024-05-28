@@ -323,6 +323,37 @@ impl ParkingHistory {
 
         Ok(data)
     }
+    
+    async fn findActiveTicket(easypark_id: Uuid, pool: &Pool<Postgres>) -> ResultApp<Vec<RelatedParkingHistory>> {
+        let data = sqlx::query_as!(
+            HistoryFromQuery, 
+            r#"
+                select ph.id, 
+                    ph.ticket_status as "ticket_status!: TicketStatus", 
+                    ph.vehicle_type as "vehicle_type!: VehicleType", 
+                    ph.payment as "payment!: PaymentType", 
+                    ph.amount,
+                    ph.created_at, 
+                    ph.updated_at,
+                    pl.area_name,
+                    pl.address,
+                    pl.image_url,
+                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount
+                from parking_history ph
+                join parking_lot pl on pl.id = ph.parking_lot_id
+                where ph.easypark_id = $1 and ph.ticket_status in ('active', 'default')
+            "#,
+            easypark_id
+        )
+            .fetch_all(pool)
+            .await?;
+
+        let data: Vec<RelatedParkingHistory> = data.into_iter()
+            .map(HistoryFromQuery::into_related_parking_history)
+            .collect();
+
+        Ok(data)
+    }
 }
 
 
