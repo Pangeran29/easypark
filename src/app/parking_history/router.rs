@@ -21,8 +21,8 @@ use crate::{
 };
 
 use super::{
-    AggregateQuery, ParkingHistory, PaymentType, RelatedParkingHistory, TicketStatus,
-    UpdateParkingHistory, VehicleType,
+    AggregateQuery, CalcHistory, CalcQuery, MonthlyRecord, ParkingHistory, PaymentType,
+    RelatedParkingHistory, TicketStatus, UpdateParkingHistory, VehicleType,
 };
 
 pub fn build(pool: Pool<Postgres>) -> Router {
@@ -31,6 +31,8 @@ pub fn build(pool: Pool<Postgres>) -> Router {
         .route("/:id", patch(update).get(detail))
         .route("/aggregate", get(aggregate))
         .route("/active-ticket/:id", get(get_active_ticket))
+        .route("/monthly", get(get_monthly_history))
+        .route("/filtered-calc", get(get_filtered_calc))
         .layer(middleware::from_fn(print_request_body))
         .with_state(pool);
 
@@ -372,3 +374,38 @@ async fn get_active_ticket(
     let active_ticket = active_ticket.remove(0);
     Ok(AppSuccess(active_ticket))
 }
+
+async fn get_monthly_history(State(pool): State<PgPool>) -> Result<AppSuccess<Vec<MonthlyRecord>>> {
+    let monthly_record = ParkingHistory::monthly_record(&pool).await?;
+    Ok(AppSuccess(monthly_record))
+}
+
+
+#[derive(Deserialize, Clone, Serialize)]
+pub struct CalcPayload {
+    pub created_at_start_filter: DateTime<Utc>,
+    pub created_at_end_filter: DateTime<Utc>,
+}
+
+impl CalcPayload {
+    fn into_calc_query(self) -> CalcQuery {
+        let created_at_end_filter = self.created_at_end_filter.naive_utc();
+        let created_at_start_filter = self.created_at_start_filter.naive_utc();
+
+        CalcQuery {
+            created_at_end_filter,
+            created_at_start_filter,
+        }
+    }
+}
+
+async fn get_filtered_calc(
+    State(pool): State<PgPool>,
+    Query(payload): Query<CalcPayload>,
+) -> Result<AppSuccess<CalcHistory>> {
+    let query = payload.into_calc_query();
+    let filtered_calc = ParkingHistory::filtered_calc(query, &pool).await?;
+    Ok(AppSuccess(filtered_calc))
+}
+
+
