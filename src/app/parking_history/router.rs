@@ -87,18 +87,6 @@ async fn create(
         ));
     }
 
-    let aggregate_payload = AggregatePayload {
-        payment_type: None,
-        ticket_status: Some(TicketStatus::Active),
-        easypark_id: Some(easypark.id),
-        owner_id: None,
-        keeper_id: None,
-        created_at_start_filter: None,
-        created_at_end_filter: None,
-        take: None,
-        skip: None,
-    };
-
     let related_history = ParkingHistory::findActiveTicket(easypark.id, &pool).await?;
 
     if related_history.len() >= 1 {
