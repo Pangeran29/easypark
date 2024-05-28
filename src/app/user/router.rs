@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     middleware,
-    routing::{patch, post},
+    routing::{get, patch, post},
     Router,
 };
 use chrono::Utc;
@@ -20,6 +20,7 @@ use super::{Role, UpdateUser, User, UserStatus};
 pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
         .route("/", post(create).get(aggregate))
+        .route("/aggregate", get(aggregate))
         .route("/:phone_number", patch(update).get(get_by_phone_number))
         .layer(middleware::from_fn(print_request_body))
         .with_state(pool);
@@ -113,6 +114,7 @@ async fn update(
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct UserAggregatePayload {
     pub belong_to_parking_lot_id: Option<Uuid>,
+    pub owner_id: Option<Uuid>,
     pub take: Option<i64>,
     pub skip: Option<i64>,
 }

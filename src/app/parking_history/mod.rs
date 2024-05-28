@@ -324,7 +324,7 @@ impl ParkingHistory {
         Ok(data)
     }
     
-    async fn findActiveTicket(easypark_id: Uuid, pool: &Pool<Postgres>) -> ResultApp<Vec<RelatedParkingHistory>> {
+    async fn find_active_ticket(easypark_id: Uuid, pool: &Pool<Postgres>) -> ResultApp<Vec<RelatedParkingHistory>> {
         let data = sqlx::query_as!(
             HistoryFromQuery, 
             r#"

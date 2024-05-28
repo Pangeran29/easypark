@@ -7,7 +7,6 @@ use axum::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
-use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -31,6 +30,7 @@ pub fn build(pool: Pool<Postgres>) -> Router {
         .route("/", post(create))
         .route("/:id", patch(update).get(detail))
         .route("/aggregate", get(aggregate))
+        .route("/active-ticket/:id", get(get_active_ticket))
         .layer(middleware::from_fn(print_request_body))
         .with_state(pool);
 
@@ -87,7 +87,7 @@ async fn create(
         ));
     }
 
-    let related_history = ParkingHistory::findActiveTicket(easypark.id, &pool).await?;
+    let related_history = ParkingHistory::find_active_ticket(easypark.id, &pool).await?;
 
     if related_history.len() >= 1 {
         return Err(Error::BadRequest("Ticket already issue".to_string()));
@@ -149,7 +149,7 @@ struct UpdateParkingHistoryPayload {
     vehicle_type: VehicleType,
     payment: PaymentType,
     parking_lot_id: Uuid,
-    easypark_id: Uuid,
+    easypark_id: Option<Uuid>,
     keeper_id: Uuid,
     owner_id: Uuid,
     created_at: Option<NaiveDateTime>,
@@ -165,7 +165,7 @@ impl UpdateParkingHistoryPayload {
             payment: Some(self.payment),
             amount: None,
             parking_lot_id: Some(self.parking_lot_id),
-            easypark_id: Some(self.easypark_id),
+            easypark_id: self.easypark_id,
             keeper_id: Some(self.keeper_id),
             owner_id: Some(self.owner_id),
             transaction_id: None,
@@ -342,4 +342,16 @@ async fn aggregate(
         },
         parking_history,
     }))
+}
+
+async fn get_active_ticket(
+    State(pool): State<PgPool>,
+    Path(id): Path<Uuid>,
+) -> Result<AppSuccess<RelatedParkingHistory>> {
+    let mut active_ticket = ParkingHistory::find_active_ticket(id, &pool).await?;
+    if active_ticket.len() < 1 {
+        return Err(Error::BadRequest("Ticket is not issue".to_string()));
+    }
+    let active_ticket = active_ticket.remove(0);
+    Ok(AppSuccess(active_ticket))
 }
