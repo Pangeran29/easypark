@@ -60,6 +60,7 @@ pub struct HistoryFromQuery {
     pub total_amount: Option<f64>,
     pub check_in_date: Option<NaiveDateTime>,
     pub check_out_date: Option<NaiveDateTime>,
+    pub easypark_name: String,
 }
 
 impl HistoryFromQuery {
@@ -108,6 +109,9 @@ impl HistoryFromQuery {
                 area_name: self.area_name,
                 address: self.address,
                 image_url: self.image_url,
+            },
+            easypark: RelatedEasypark {
+                name: self.easypark_name
             }
         }
     }
@@ -127,6 +131,7 @@ pub struct RelatedParkingHistory {
     pub check_in_date: Option<DateTime<Utc>>,
     pub check_out_date: Option<DateTime<Utc>>,
     pub parking_lot: RelatedParkingLot,
+    pub easypark: RelatedEasypark
 }
 
 #[derive(Debug, Serialize)]
@@ -134,6 +139,11 @@ pub struct RelatedParkingLot {
     pub area_name: String,
     pub address: String,
     pub image_url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RelatedEasypark {
+    pub name: String,
 }
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
@@ -351,10 +361,12 @@ impl ParkingHistory {
                     CEIL(EXTRACT(EPOCH FROM (NOW() - ph.check_in_date)) / 3600) * ph.amount AS forecast_amount,
                     cast (tx.gross_amount as float) as total_amount,
                     ph.check_in_date, 
-                    ph.check_out_date
+                    ph.check_out_date,
+                    u."name" as easypark_name
                 from parking_history ph
                 join parking_lot pl on pl.id = ph.parking_lot_id
                 join transaction_history tx on tx.id = ph.transaction_id
+                join "user" u on u.id = ph.easypark_id
                 where ($1::timestamp is null or ph.created_at >= $1) and ($2::timestamp is null or ph.created_at <= $2) and
                     (($3::uuid is not null and ph.easypark_id = $3) or ($4::uuid is not null and ph.owner_id = $4) or ($5::uuid is not null and ph.keeper_id = $5) or ($3::uuid is null and $4::uuid is null and $5::uuid is null)) and
                     ($6 = 'default' or ph.ticket_status = $6::ticket_status) and
@@ -399,10 +411,12 @@ impl ParkingHistory {
                     CEIL(EXTRACT(EPOCH FROM (NOW() - ph.check_in_date)) / 3600) * ph.amount AS forecast_amount,
                     cast(tx.gross_amount as float) as total_amount,
                     ph.check_in_date,
-                    ph.check_out_date
+                    ph.check_out_date,
+                    u."name" as easypark_name
                 from parking_history ph
                 join parking_lot pl on pl.id = ph.parking_lot_id
                 join transaction_history tx on tx.id = ph.transaction_id
+                join "user" u on u.id = ph.easypark_id
                 where ph.easypark_id = $1 and ph.ticket_status in ('active', 'default')
             "#,
             easypark_id
