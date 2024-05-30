@@ -77,6 +77,20 @@ impl HistoryFromQuery {
             },
             None => None,
         };
+        
+        let check_in_date: Option<DateTime<Utc>> = match &self.check_in_date {
+            Some(check_in_date) => {
+                Some(TimeZone::from_utc_datetime(&Utc, check_in_date))
+            },
+            None => None,
+        };
+
+        let check_out_date = match &self.check_out_date {
+            Some(check_out_date) => {
+                Some(TimeZone::from_utc_datetime(&Utc, check_out_date))
+            },
+            None => None,
+        };
 
         RelatedParkingHistory {
             id: self.id,
@@ -88,8 +102,8 @@ impl HistoryFromQuery {
             amount: self.amount,
             created_at,
             updated_at,
-            check_in_date: self.check_in_date,
-            check_out_date: self.check_out_date,
+            check_in_date,
+            check_out_date,
             parking_lot: RelatedParkingLot {
                 area_name: self.area_name,
                 address: self.address,
@@ -110,8 +124,8 @@ pub struct RelatedParkingHistory {
     pub total_amount: f64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub check_in_date: Option<NaiveDateTime>,
-    pub check_out_date: Option<NaiveDateTime>,
+    pub check_in_date: Option<DateTime<Utc>>,
+    pub check_out_date: Option<DateTime<Utc>>,
     pub parking_lot: RelatedParkingLot,
 }
 

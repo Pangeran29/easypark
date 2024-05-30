@@ -151,12 +151,12 @@ async fn create(
 
 #[derive(Serialize, Deserialize)]
 struct UpdateParkingHistoryPayload {
-    ticket_status: TicketStatus,
-    vehicle_type: VehicleType,
-    payment: PaymentType,
-    parking_lot_id: Uuid,
-    easypark_id: Uuid,
-    keeper_id: Uuid,
+    ticket_status: Option<TicketStatus>,
+    vehicle_type: Option<VehicleType>,
+    payment: Option<PaymentType>,
+    parking_lot_id: Option<Uuid>,
+    easypark_id: Option<Uuid>,
+    keeper_id: Option<Uuid>,
     owner_id: Option<Uuid>,
     created_at: Option<NaiveDateTime>,
     updated_at: Option<NaiveDateTime>,
@@ -168,13 +168,13 @@ impl UpdateParkingHistoryPayload {
     fn into_update_parking_history(self) -> UpdateParkingHistory {
         UpdateParkingHistory {
             id: None,
-            ticket_status: Some(self.ticket_status),
-            vehicle_type: Some(self.vehicle_type),
-            payment: Some(self.payment),
+            ticket_status: self.ticket_status,
+            vehicle_type: self.vehicle_type,
+            payment: self.payment,
             amount: None,
-            parking_lot_id: Some(self.parking_lot_id),
-            easypark_id: Some(self.easypark_id),
-            keeper_id: Some(self.keeper_id),
+            parking_lot_id: self.parking_lot_id,
+            easypark_id: self.easypark_id,
+            keeper_id: self.keeper_id,
             owner_id: self.owner_id,
             transaction_id: None,
             created_at: None,
