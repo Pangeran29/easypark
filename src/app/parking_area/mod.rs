@@ -20,6 +20,20 @@ pub struct ParkingLot {
     pub updated_at: Option<NaiveDateTime>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ParkingLotWithCountOfKeeper {
+    pub id: Uuid,
+    pub area_name: String,
+    pub address: String,
+    pub image_url: String,
+    pub car_cost: f64,
+    pub motor_cost: f64,
+    pub owner_id: Uuid,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
+    pub keeper_count: Option<i64>,
+}
+
 impl ParkingLot {
     pub async fn save(self, pool: &Pool<Postgres>) -> Result<ParkingLot> {
         let parking_lot = sqlx::query_as!(
@@ -53,10 +67,26 @@ impl ParkingLot {
         Ok(parking_lot)
     }
     
-    pub async fn find_by_owner(owner_id: Uuid, pool: &Pool<Postgres>) -> Result<Vec<ParkingLot>> {
+    pub async fn find_by_owner(owner_id: Uuid, pool: &Pool<Postgres>) -> Result<Vec<ParkingLotWithCountOfKeeper>> {
         let parking_lot = sqlx::query_as!(
-            ParkingLot, 
-            r#"select * from parking_lot where owner_id = $1"#,  
+            ParkingLotWithCountOfKeeper, 
+            r#"
+                select 
+                    pl.*,
+                    count(u.*) as keeper_count
+                from parking_lot pl
+                join "user" u on u.parking_lot_id = pl.id
+                where pl.owner_id = $1
+                group by pl.id,
+                    pl.area_name,
+                    pl.address,
+                    pl.image_url,
+                    pl.car_cost,
+                    pl.motor_cost,
+                    pl.owner_id,
+                    pl.created_at,
+                    pl.updated_at
+            "#,  
             owner_id
         )
             .fetch_all(pool)

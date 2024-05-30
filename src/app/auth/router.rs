@@ -43,7 +43,8 @@ impl RegisterPayload {
             otp: None,
             created_at: None,
             updated_at: None,
-            parking_lot_id: None
+            parking_lot_id: None,
+            owner_id: None
         }
     }
 }

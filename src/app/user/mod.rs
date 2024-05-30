@@ -20,6 +20,7 @@ pub struct User {
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
     pub parking_lot_id: Option<Uuid>,
+    pub owner_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, sqlx::Type, Deserialize, Serialize)]
@@ -43,7 +44,7 @@ impl User {
     pub async fn save(self, pool: &Pool<Postgres>) -> Result<User> {
         let user = sqlx::query_as!(
             User, 
-            r#"insert into "user" values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id, phone_number, name, nik, role as "role!: Role", status as "status!: UserStatus", otp, created_at, updated_at, parking_lot_id"#,  
+            r#"insert into "user" values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id, phone_number, name, nik, role as "role!: Role", status as "status!: UserStatus", otp, created_at, updated_at, parking_lot_id, owner_id"#,  
             self.id,
             self.phone_number,
             self.name,
@@ -53,7 +54,8 @@ impl User {
             self.otp,
             self.created_at,
             self.updated_at,
-            self.parking_lot_id
+            self.parking_lot_id,
+            self.owner_id
         )
             .fetch_one(pool)
             .await?;
@@ -64,7 +66,7 @@ impl User {
     pub async fn find_one(phone: String, pool: &Pool<Postgres>) -> Result<User> {
         let user = sqlx::query_as!(
             User, 
-            r#"select id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id from "user" where phone_number = $1"#,
+            r#"select id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id, owner_id from "user" where phone_number = $1"#,
             phone
         )
             .fetch_one(pool)
@@ -76,7 +78,7 @@ impl User {
     pub async fn find_one_by_id(id: Uuid, pool: &Pool<Postgres>) -> Result<User> {
         let user = sqlx::query_as!(
             User, 
-            r#"select id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id  from "user" where id = $1"#,
+            r#"select id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id, owner_id  from "user" where id = $1"#,
             id
         )
             .fetch_one(pool)
@@ -88,7 +90,7 @@ impl User {
     pub async fn update_otp(self, otp: i32, pool: &Pool<Postgres>) -> Result<User> {
         let user = sqlx::query_as!(
             User, 
-            r#"update "user" set otp = $1 where phone_number = $2 returning id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id"#,
+            r#"update "user" set otp = $1 where phone_number = $2 returning id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id, owner_id"#,
             otp,
             self.phone_number
         )
@@ -101,7 +103,7 @@ impl User {
     pub async fn update_status(self, status: UserStatus, pool: &Pool<Postgres>) -> Result<User> {
         let user = sqlx::query_as!(
             User, 
-            r#"update "user" set status = $1 where phone_number = $2 returning id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id"#,
+            r#"update "user" set status = $1 where phone_number = $2 returning id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id, owner_id"#,
             status as UserStatus,
             self.phone_number
         )
@@ -115,7 +117,7 @@ impl User {
         let otp: Option<i32> = None;
         let user = sqlx::query_as!(
             User, 
-            r#"update "user" set otp = $1 where phone_number = $2 returning id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id"#,
+            r#"update "user" set otp = $1 where phone_number = $2 returning id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id, owner_id"#,
             otp,
             self.phone_number
         )
@@ -138,7 +140,8 @@ impl User {
                     u.otp, 
                     u.created_at, 
                     u.updated_at, 
-                    u.parking_lot_id 
+                    u.parking_lot_id, 
+                    u.owner_id
                 from "user" u
                 join "parking_lot" pl on u.parking_lot_id = pl.id
                 where ($3::Uuid is null or parking_lot_id = $3) and 
@@ -188,6 +191,7 @@ pub struct UpdateUser {
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
     pub parking_lot_id: Option<Uuid>,
+    pub owner_id: Option<Uuid>,
 }
 
 impl UpdateUser {
@@ -204,9 +208,21 @@ impl UpdateUser {
                         updated_at = coalesce($6, "user".updated_at),
                         status = coalesce($7, "user".status),
                         role = coalesce($8, "user".role),
-                        parking_lot_id = coalesce($9, "user".parking_lot_id)
-                    where phone_number = $10
-                    returning id, phone_number, name, nik, role as "role!: Role", status as "status!: UserStatus", otp, created_at, updated_at, parking_lot_id
+                        parking_lot_id = coalesce($9, "user".parking_lot_id),
+                        owner_id = $10
+                    where phone_number = $11
+                    returning 
+                        id, 
+                        phone_number, 
+                        name, 
+                        nik, 
+                        role as "role!: Role", 
+                        status as "status!: UserStatus", 
+                        otp, 
+                        created_at, 
+                        updated_at, 
+                        parking_lot_id,
+                        owner_id
             "#,  
             self.phone_number,
             self.name,
@@ -217,6 +233,7 @@ impl UpdateUser {
             self.status.unwrap_or(UserStatus::Default) as UserStatus,
             self.role.unwrap_or(Role::Default) as Role,
             self.parking_lot_id,
+            self.owner_id,
             phone_number
         )
             .fetch_one(pool)
