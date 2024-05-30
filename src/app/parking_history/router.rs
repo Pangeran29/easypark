@@ -375,14 +375,22 @@ async fn get_active_ticket(
     Ok(AppSuccess(active_ticket))
 }
 
-async fn get_monthly_history(State(pool): State<PgPool>) -> Result<AppSuccess<Vec<MonthlyRecord>>> {
-    let monthly_record = ParkingHistory::monthly_record(&pool).await?;
+#[derive(Deserialize, Clone, Serialize)]
+pub struct MonthlyHistory {
+    pub owner_id: Uuid,
+}
+
+async fn get_monthly_history(
+    State(pool): State<PgPool>,
+    Query(payload): Query<MonthlyHistory>,
+) -> Result<AppSuccess<Vec<MonthlyRecord>>> {
+    let monthly_record = ParkingHistory::monthly_record(payload.owner_id, &pool).await?;
     Ok(AppSuccess(monthly_record))
 }
 
-
 #[derive(Deserialize, Clone, Serialize)]
 pub struct CalcPayload {
+    pub owner_id: Uuid,
     pub created_at_start_filter: DateTime<Utc>,
     pub created_at_end_filter: DateTime<Utc>,
 }
@@ -393,6 +401,7 @@ impl CalcPayload {
         let created_at_start_filter = self.created_at_start_filter.naive_utc();
 
         CalcQuery {
+            owner_id: self.owner_id,
             created_at_end_filter,
             created_at_start_filter,
         }
@@ -407,5 +416,3 @@ async fn get_filtered_calc(
     let filtered_calc = ParkingHistory::filtered_calc(query, &pool).await?;
     Ok(AppSuccess(filtered_calc))
 }
-
-
