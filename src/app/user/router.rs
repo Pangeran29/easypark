@@ -45,6 +45,7 @@ struct CreateUserPayload {
     status: UserStatus,
     otp: Option<i32>,
     belong_to_parking_lot_id: Option<Uuid>,
+    owner_id: Option<Uuid>,
 }
 
 impl CreateUserPayload {
@@ -60,6 +61,7 @@ impl CreateUserPayload {
             created_at: Some(Utc::now().naive_utc()),
             updated_at: None,
             parking_lot_id: self.belong_to_parking_lot_id,
+            owner_id: self.owner_id,
         }
     }
 }
@@ -82,6 +84,7 @@ struct UpdateUserPayload {
     status: Option<UserStatus>,
     otp: Option<i32>,
     belong_to_parking_lot_id: Option<Uuid>,
+    owner_id: Option<Uuid>,
 }
 
 impl UpdateUserPayload {
@@ -97,6 +100,7 @@ impl UpdateUserPayload {
             created_at: None,
             updated_at: Some(Utc::now().naive_utc()),
             parking_lot_id: self.belong_to_parking_lot_id,
+            owner_id: self.owner_id,
         }
     }
 }

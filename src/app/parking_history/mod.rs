@@ -56,6 +56,7 @@ pub struct HistoryFromQuery {
     pub area_name: String,
     pub address: String,
     pub image_url: String,
+    pub forecast_amount: Option<f64>,
     pub total_amount: Option<f64>,
     pub check_in_date: Option<NaiveDateTime>,
     pub check_out_date: Option<NaiveDateTime>,
@@ -83,6 +84,7 @@ impl HistoryFromQuery {
             vehicle_type: self.vehicle_type,
             payment: self.payment,
             total_amount: self.total_amount.unwrap_or(0.0),
+            forecast_amount: self.forecast_amount.unwrap_or(0.0),
             amount: self.amount,
             created_at,
             updated_at,
@@ -104,6 +106,7 @@ pub struct RelatedParkingHistory {
     pub vehicle_type: VehicleType,
     pub payment: PaymentType,
     pub amount: f64,
+    pub forecast_amount: f64,
     pub total_amount: f64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -134,6 +137,7 @@ pub struct AggregateQuery {
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct CalcQuery {
+    pub owner_id: Uuid,
     pub created_at_start_filter: NaiveDateTime,
     pub created_at_end_filter: NaiveDateTime,
 }
@@ -272,7 +276,7 @@ impl ParkingHistory {
                         updated_at,
                         check_in_date,
                         check_out_date,
-                        ceil(extract(epoch from (now() - created_at)) / 3600) * amount as total_amount
+                        ceil(extract(epoch from (now() - check_in_date)) / 3600) * amount as total_amount
                 ),
                 update_transaction as (
                     update transaction_history 
@@ -330,11 +334,13 @@ impl ParkingHistory {
                     pl.area_name,
                     pl.address,
                     pl.image_url,
-                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount,
+                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.check_in_date)) / 3600) * ph.amount AS forecast_amount,
+                    cast (tx.gross_amount as float) as total_amount,
                     ph.check_in_date, 
                     ph.check_out_date
                 from parking_history ph
                 join parking_lot pl on pl.id = ph.parking_lot_id
+                join transaction_history tx on tx.id = ph.transaction_id
                 where ($1::timestamp is null or ph.created_at >= $1) and ($2::timestamp is null or ph.created_at <= $2) and
                     (($3::uuid is not null and ph.easypark_id = $3) or ($4::uuid is not null and ph.owner_id = $4) or ($5::uuid is not null and ph.keeper_id = $5) or ($3::uuid is null and $4::uuid is null and $5::uuid is null)) and
                     ($6 = 'default' or ph.ticket_status = $6::ticket_status) and
@@ -376,11 +382,13 @@ impl ParkingHistory {
                     pl.area_name,
                     pl.address,
                     pl.image_url,
-                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.created_at)) / 3600) * ph.amount AS total_amount,
+                    CEIL(EXTRACT(EPOCH FROM (NOW() - ph.check_in_date)) / 3600) * ph.amount AS forecast_amount,
+                    cast(tx.gross_amount as float) as total_amount,
                     ph.check_in_date,
                     ph.check_out_date
                 from parking_history ph
                 join parking_lot pl on pl.id = ph.parking_lot_id
+                join transaction_history tx on tx.id = ph.transaction_id
                 where ph.easypark_id = $1 and ph.ticket_status in ('active', 'default')
             "#,
             easypark_id
@@ -395,7 +403,7 @@ impl ParkingHistory {
         Ok(data)
     }
     
-    async fn monthly_record(pool: &Pool<Postgres>) -> ResultApp<Vec<MonthlyRecord>> {
+    async fn monthly_record(owner_id: Uuid, pool: &Pool<Postgres>) -> ResultApp<Vec<MonthlyRecord>> {
         let data = sqlx::query_as!(
             MonthlyRecord, 
             r#"
@@ -404,13 +412,14 @@ impl ParkingHistory {
                     COUNT(*) AS total_history
                 FROM
                     parking_history
-                WHERE
+                WHERE owner_id = $1 and
                     EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)
                 GROUP BY
                     month
                 ORDER BY
                     MIN(created_at);
-            "#
+            "#,
+            owner_id
         )
             .fetch_all(pool)
             .await?;
@@ -422,14 +431,15 @@ impl ParkingHistory {
         let data = sqlx::query_as!(
             CalcHistory, 
             r#"
-                select sum(cast(th.gross_amount AS DOUBLE PRECISION)) as sum_all ,
+                select sum(cast(th.gross_amount AS DOUBLE PRECISION)) as sum_all,
                     count(*) as total_history
                 from parking_history ph
                 join transaction_history th ON ph.transaction_id = th.id 
-                where ticket_status = 'not_active' and ph.created_at >= $1 and ph.created_at <= $2
+                where ticket_status = 'not_active' and ph.created_at >= $1 and ph.created_at <= $2 and owner_id = $3
             "#,
             payload.created_at_start_filter,
-            payload.created_at_end_filter
+            payload.created_at_end_filter,
+            payload.owner_id
         )
             .fetch_one(pool)
             .await?;

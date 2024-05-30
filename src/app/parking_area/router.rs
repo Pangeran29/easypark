@@ -18,7 +18,7 @@ use crate::{
     middleware::base::print_request_body,
 };
 
-use super::{ParkingLot, UpdateParkingLot};
+use super::{ParkingLot, ParkingLotWithCountOfKeeper, UpdateParkingLot};
 
 pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
@@ -149,7 +149,7 @@ async fn detail(
 async fn get_by_owner(
     State(pool): State<PgPool>,
     Path(owner_id): Path<Uuid>,
-) -> Result<AppSuccess<Vec<ParkingLot>>> {
+) -> Result<AppSuccess<Vec<ParkingLotWithCountOfKeeper>>> {
     let parking_lot = ParkingLot::find_by_owner(owner_id, &pool).await?;
     Ok(AppSuccess(parking_lot))
 }
