@@ -6,9 +6,10 @@ use axum::{
     routing::{get, patch, post},
     Router,
 };
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -18,7 +19,7 @@ use crate::{
     middleware::base::print_request_body,
 };
 
-use super::{ParkingLot, ParkingLotWithCountOfKeeper, UpdateParkingLot};
+use super::{DetailParkingLotFromQuery, ParkingLot, ParkingLotWithCountOfKeeper, UpdateParkingLot};
 
 pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
@@ -87,6 +88,7 @@ struct UpdateParkingLotPayload {
     car_cost: Option<f64>,
     motor_cost: Option<f64>,
     owner_id: Option<Uuid>,
+    park_keeper_ids: Option<Vec<Uuid>>,
 }
 
 impl UpdateParkingLotPayload {
@@ -133,17 +135,85 @@ async fn update(
         None => {}
     }
 
+    match &payload.park_keeper_ids {
+        Some(ids) => {
+            // let ids = ids.clone();
+            User::update_parking_lot(id, ids.clone(), &pool).await?;
+        }
+        None => {}
+    }
+
     let parking_lot = payload.into_update_parking_lot();
     let parking_lot = parking_lot.update(id, &pool).await?;
     Ok(AppSuccess(parking_lot))
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct DetailParkingLot {
+    pub id: Option<Uuid>,
+    pub area_name: Option<String>,
+    pub address: Option<String>,
+    pub image_url: Option<String>,
+    pub car_cost: Option<f64>,
+    pub motor_cost: Option<f64>,
+    pub owner_id: Option<Uuid>,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
+    pub keepers: Option<Vec<KeeperOnDetailParkingLot>>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct KeeperOnDetailParkingLot {
+    pub id: Option<Uuid>,
+    pub name: Option<String>,
+}
+
 async fn detail(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
-) -> Result<AppSuccess<ParkingLot>> {
-    let parking_lot = ParkingLot::find_one(id, &pool).await?;
-    Ok(AppSuccess(parking_lot))
+) -> Result<AppSuccess<DetailParkingLot>> {
+    let parking_lot = ParkingLot::detail(id, &pool).await?;
+
+    let keeper_info: Vec<KeeperOnDetailParkingLot> = parking_lot
+        .clone()
+        .into_iter()
+        .map(|item| KeeperOnDetailParkingLot {
+            id: item.keeper_id,
+            name: item.keeper_name,
+        })
+        .collect();
+
+    let mut detail = DetailParkingLot {
+        id: None,
+        area_name: None,
+        address: None,
+        image_url: None,
+        car_cost: None,
+        motor_cost: None,
+        owner_id: None,
+        created_at: None,
+        updated_at: None,
+        keepers: None,
+    };
+
+    for data in parking_lot {
+        detail = DetailParkingLot {
+            id: Some(data.id),
+            area_name: Some(data.area_name),
+            address: Some(data.address),
+            image_url: Some(data.image_url),
+            car_cost: Some(data.car_cost),
+            motor_cost: Some(data.motor_cost),
+            owner_id: Some(data.owner_id),
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+            keepers: None,
+        };
+    }
+
+    detail.keepers = Some(keeper_info);
+
+    Ok(AppSuccess(detail))
 }
 
 async fn get_by_owner(
