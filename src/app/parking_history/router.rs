@@ -390,7 +390,8 @@ async fn get_monthly_history(
 
 #[derive(Deserialize, Clone, Serialize)]
 pub struct CalcPayload {
-    pub owner_id: Uuid,
+    pub owner_id: Option<Uuid>,
+    pub keeper_id: Option<Uuid>,
     pub created_at_start_filter: DateTime<Utc>,
     pub created_at_end_filter: DateTime<Utc>,
 }
@@ -402,6 +403,7 @@ impl CalcPayload {
 
         CalcQuery {
             owner_id: self.owner_id,
+            keeper_id: self.keeper_id,
             created_at_end_filter,
             created_at_start_filter,
         }
