@@ -1,4 +1,5 @@
 use chrono::NaiveDateTime;
+use router::DetailParkingLot;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
@@ -18,6 +19,21 @@ pub struct ParkingLot {
     pub owner_id: Uuid,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DetailParkingLotFromQuery {
+    pub id: Uuid,
+    pub area_name: String,
+    pub address: String,
+    pub image_url: String,
+    pub car_cost: f64,
+    pub motor_cost: f64,
+    pub owner_id: Uuid,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
+    pub keeper_id: Option<Uuid>,
+    pub keeper_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -67,6 +83,25 @@ impl ParkingLot {
         Ok(parking_lot)
     }
     
+    pub async fn detail(id: Uuid, pool: &Pool<Postgres>) -> Result<Vec<DetailParkingLotFromQuery>> {
+        let parking_lot = sqlx::query_as!(
+            DetailParkingLotFromQuery, 
+            r#"
+                select pl.*, 
+                    u.id as keeper_id, 
+                    u.name as keeper_name 
+                from parking_lot pl
+                join "user" u on u.parking_lot_id = pl.id
+                where pl.id = $1
+            "#,  
+            id
+        )
+            .fetch_all(pool)
+            .await?;
+
+        Ok(parking_lot)
+    }
+    
     pub async fn find_by_owner(owner_id: Uuid, pool: &Pool<Postgres>) -> Result<Vec<ParkingLotWithCountOfKeeper>> {
         let parking_lot = sqlx::query_as!(
             ParkingLotWithCountOfKeeper, 
@@ -75,7 +110,7 @@ impl ParkingLot {
                     pl.*,
                     count(u.*) as keeper_count
                 from parking_lot pl
-                join "user" u on u.parking_lot_id = pl.id
+                left join "user" u on u.parking_lot_id = pl.id
                 where pl.owner_id = $1
                 group by pl.id,
                     pl.area_name,
