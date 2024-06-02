@@ -161,7 +161,8 @@ pub struct AggregateQuery {
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct CalcQuery {
-    pub owner_id: Uuid,
+    pub owner_id: Option<Uuid>,
+    pub keeper_id: Option<Uuid>,
     pub created_at_start_filter: NaiveDateTime,
     pub created_at_end_filter: NaiveDateTime,
 }
@@ -463,11 +464,16 @@ impl ParkingHistory {
                     count(*) as total_history
                 from parking_history ph
                 join transaction_history th ON ph.transaction_id = th.id 
-                where ticket_status = 'not_active' and ph.created_at >= $1 and ph.created_at <= $2 and owner_id = $3
+                where ticket_status = 'not_active' and 
+                    ph.created_at >= $1 and 
+                    ph.created_at <= $2 and 
+                    ($3::uuid is null or ph.owner_id = $3) and
+                    ($4::uuid is null or (ph.keeper_id = $4 and ph.payment = 'cash'))
             "#,
             payload.created_at_start_filter,
             payload.created_at_end_filter,
-            payload.owner_id
+            payload.owner_id,
+            payload.keeper_id,
         )
             .fetch_one(pool)
             .await?;

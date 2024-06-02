@@ -7,6 +7,7 @@ use axum::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -119,6 +120,7 @@ async fn update(
 pub struct UserAggregatePayload {
     pub belong_to_parking_lot_id: Option<Uuid>,
     pub owner_id: Option<Uuid>,
+    pub already_assigned: Option<bool>,
     pub take: Option<i64>,
     pub skip: Option<i64>,
 }
@@ -139,6 +141,7 @@ async fn aggregate(
     State(pool): State<PgPool>,
     Query(payload): Query<UserAggregatePayload>,
 ) -> Result<AppSuccess<Aggregate>> {
+    debug!("{:#?}", payload);
     let count = User::count(&pool, payload).await?;
     let user = User::aggregate(&pool, payload).await?;
     Ok(AppSuccess(Aggregate {

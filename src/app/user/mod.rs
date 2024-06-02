@@ -131,28 +131,30 @@ impl User {
         let user = sqlx::query_as!(
             User, 
             r#"
-                select u.id, 
-                    u.phone_number, 
-                    u.name, 
-                    u.nik, 
-                    u.role as "role!: Role", 
-                    u.status as "status!:UserStatus", 
-                    u.otp, 
-                    u.created_at, 
-                    u.updated_at, 
-                    u.parking_lot_id, 
+                select u.id,
+                    u.phone_number,
+                    u.name,
+                    u.nik,
+                    u.role as "role!: Role",
+                    u.status as "status!:UserStatus",
+                    u.otp,
+                    u.created_at,
+                    u.updated_at,
+                    u.parking_lot_id,
                     u.owner_id
                 from "user" u
-                join "parking_lot" pl on u.parking_lot_id = pl.id
-                where ($3::Uuid is null or parking_lot_id = $3) and 
-                    ($4::Uuid is null or pl.owner_id = $4)
+                left join "parking_lot" pl on u.parking_lot_id = pl.id
+                where ($3::Uuid is null or u.parking_lot_id = $3)
+                    and ($4::Uuid is null or u.owner_id = $4)
+                    and ($5::bool is null or ($5 = false and u.parking_lot_id is null) or ($5 = true and u.parking_lot_id is not null))
                 limit $1
                 offset $2
             "#,
             payload.take,
             payload.skip,
             payload.belong_to_parking_lot_id,
-            payload.owner_id
+            payload.owner_id,
+            payload.already_assigned            
         )
             .fetch_all(pool)
             .await?;
