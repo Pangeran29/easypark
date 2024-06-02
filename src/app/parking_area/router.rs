@@ -137,8 +137,10 @@ async fn update(
 
     match &payload.park_keeper_ids {
         Some(ids) => {
-            User::remove_parking_lot(id, &pool).await?;
-            User::update_parking_lot(id, ids.clone(), &pool).await?;
+            if ids.len() > 0 {
+                User::remove_parking_lot(id, &pool).await?;
+                User::update_parking_lot(id, ids.clone(), &pool).await?;
+            }
         }
         None => {}
     }
