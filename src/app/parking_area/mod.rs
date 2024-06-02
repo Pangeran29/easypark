@@ -87,10 +87,10 @@ impl ParkingLot {
             DetailParkingLotFromQuery, 
             r#"
                 select pl.*, 
-                    u.id as keeper_id, 
-                    u.name as keeper_name 
+                    coalesce(u.id, null) as keeper_id, 
+                    coalesce(u.name, null) as keeper_name 
                 from parking_lot pl
-                join "user" u on u.parking_lot_id = pl.id
+                left join "user" u on u.parking_lot_id = pl.id
                 where pl.id = $1
             "#,  
             id
