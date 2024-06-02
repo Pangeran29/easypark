@@ -9,7 +9,6 @@ use axum::{
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
-use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -19,7 +18,7 @@ use crate::{
     middleware::base::print_request_body,
 };
 
-use super::{DetailParkingLotFromQuery, ParkingLot, ParkingLotWithCountOfKeeper, UpdateParkingLot};
+use super::{ParkingLot, ParkingLotWithCountOfKeeper, UpdateParkingLot};
 
 pub fn build(pool: Pool<Postgres>) -> Router {
     let router = Router::new()
@@ -137,7 +136,7 @@ async fn update(
 
     match &payload.park_keeper_ids {
         Some(ids) => {
-            // let ids = ids.clone();
+            User::remove_parking_lot(id, &pool).await?;
             User::update_parking_lot(id, ids.clone(), &pool).await?;
         }
         None => {}

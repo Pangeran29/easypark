@@ -197,6 +197,24 @@ impl User {
 
         Ok(count)
     }
+
+    pub async fn remove_parking_lot(parking_lot_id: Uuid, pool: &Pool<Postgres>) -> Result<User> {
+        let count = sqlx::query_as!(
+            User, 
+            r#"
+                update "user"
+                set parking_lot_id = null
+                where parking_lot_id = $1
+                returning id, phone_number, name, nik, role as "role!: Role", status as "status!:UserStatus", otp, created_at, updated_at, parking_lot_id, owner_id
+            "#,
+            parking_lot_id,
+        )
+            .fetch_one(pool)
+            .await?;
+
+        Ok(count)
+    }
+
 }
 
 #[derive(Debug, Serialize, Deserialize)]
