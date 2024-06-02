@@ -9,6 +9,7 @@ use axum::{
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -176,9 +177,15 @@ async fn detail(
     let keeper_info: Vec<KeeperOnDetailParkingLot> = parking_lot
         .clone()
         .into_iter()
-        .map(|item| KeeperOnDetailParkingLot {
-            id: item.keeper_id,
-            name: item.keeper_name,
+        .filter_map(|item| {
+            if let (Some(id), Some(name)) = (item.keeper_id, item.keeper_name) {
+                Some(KeeperOnDetailParkingLot {
+                    id: Some(id),
+                    name: Some(name),
+                })
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -192,7 +199,7 @@ async fn detail(
         owner_id: None,
         created_at: None,
         updated_at: None,
-        keepers: None,
+        keepers: Some(Vec::new()), // Initialize keepers as an empty Vec
     };
 
     for data in parking_lot {
@@ -206,11 +213,16 @@ async fn detail(
             owner_id: Some(data.owner_id),
             created_at: data.created_at,
             updated_at: data.updated_at,
-            keepers: None,
+            keepers: Some(Vec::new()), // Initialize keepers as an empty Vec
         };
     }
 
-    detail.keepers = Some(keeper_info);
+    // Set the `keepers` field to `keeper_info` if it's not empty
+    if !keeper_info.is_empty() {
+        detail.keepers = Some(keeper_info);
+    }
+
+    // Now `detail.keepers` will be an empty Vec if no valid keepers exist, or it will be set to the valid keepers
 
     Ok(AppSuccess(detail))
 }
