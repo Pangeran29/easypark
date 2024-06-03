@@ -410,11 +410,20 @@ impl CalcPayload {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct FilteredCalc {
+    pub sum_all: f64,
+    pub total_history: i64
+}
+
 async fn get_filtered_calc(
     State(pool): State<PgPool>,
     Query(payload): Query<CalcPayload>,
-) -> Result<AppSuccess<CalcHistory>> {
+) -> Result<AppSuccess<FilteredCalc>> {
     let query = payload.into_calc_query();
     let filtered_calc = ParkingHistory::filtered_calc(query, &pool).await?;
-    Ok(AppSuccess(filtered_calc))
+    Ok(AppSuccess(FilteredCalc {
+        sum_all: filtered_calc.sum_all.unwrap_or(0.0),
+        total_history: filtered_calc.total_history.unwrap_or(0)
+    }))
 }
