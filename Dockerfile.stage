@@ -1,0 +1,19 @@
+FROM rust as build
+
+RUN USER=root cargo new --bin easy_park
+WORKDIR /easy_park
+
+COPY . .
+RUN cargo install sqlx-cli
+RUN cargo clean && sqlx database drop
+RUN sqlx database create
+RUN sqlx migrate run
+
+RUN cargo build --release
+
+FROM rust
+COPY --from=build /easy_park/execute.sh ./execute.sh
+RUN chmod +x ./execute.sh
+COPY --from=build /easy_park/.env .env
+COPY --from=build /easy_park/target/release/backend-parking ./easy_park
+CMD ["./execute.sh"]

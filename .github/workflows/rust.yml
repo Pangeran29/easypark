@@ -13,33 +13,57 @@ env:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
-
+    runs-on: ${{matrix.os}}
+    strategy:
+      matrix:
+        # os: [ubuntu-latest, windows-latest, macOs-latest]
+        os: [ubuntu-latest]
+        
     steps:
     - uses: actions/checkout@v4
-    - name: Instal sqlx
-      run: cargo install sqlx-cli
-    - name: Create DB
-      run: sqlx database create
-    - name: Migrate Table
-      run: sqlx migrate run
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Prepare env
+      run: |
+          mkdir .cargo
+          touch config.toml
+          echo "${{ secrets.API_KEY_STAGING }}" > .env
+    - name: Prepare toml
+      run: |
+          echo '[env]' > .cargo/config.toml
+          while IFS= read -r line; do
+            if [[ "$line" == *"="* ]]; then
+              key=$(echo "$line" | cut -d '=' -f 1)
+              value=$(echo "$line" | cut -d '=' -f 2-)
+              value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//')
+              echo "$key = \"$value\"" >> .cargo/config.toml
+            fi
+            done < .env
 
-    - name: Login to Docker hub
-      uses: docker/login-action@v1
-      with: 
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-
+    - name: Setup docker (missing on MacOS)
+      if: runner.os == 'macos'
+      run: |
+        mkdir -p ~/.docker/machine/cache
+        curl -Lo ~/.docker/machine/cache/boot2docker.iso https://github.com/boot2docker/boot2docker/releases/download/v19.03.12/boot2docker.iso
+        brew install --cask docker dockmate
+        
     - name: Build and Push Docker image
-      uses: docker/build-push-action@v2
+      uses: mr-smithers-excellent/docker-build-push@v6
+      with: 
+         image: rsaputra11/easy_park_rust
+         tags: ${{ secrets.DOCKER_TAGS }}
+         registry: docker.io
+         dockerfile: Dockerfile.stage
+         username: ${{ secrets.DOCKER_USERNAME }}
+         password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Deploy to Ec2
+      uses: appleboy/ssh-action@master
       with:
-        context: .
-        push: true
-        tags: saputra/easypark:${{ github.sha }}
-    
-      
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_PRIVATE_KEY }}
+        script: |
+          docker login --username=${{ secrets.DOCKER_USERNAME }} --password=${{ secrets.DOCKER_PASSWORD }} docker.io
+          docker stop easy_park_rust || true
+          docker rm easy_park_rust || true
+          docker pull ${{ secrets.DOCKER_USERNAME }}/easy_park_rust:${{ secrets.DOCKER_TAGS }}
+          docker run -d --name easy_park_rust -p 3000:3000 ${{ secrets.DOCKER_USERNAME }}/easy_park_rust:${{ secrets.DOCKER_TAGS }}
